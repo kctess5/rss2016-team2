@@ -99,7 +99,7 @@ class SimulationDriver():
 
         def laserCallback(self, laser_msg):
                 straight_ahead = laser_msg.ranges[len(laser_msg.ranges)/2]
-                if straight_ahead < 20:
+                if straight_ahead < 2:
                     self.enabled = False
                 else:
                     self.enabled = True #WARNING anyone else setting enabled needs to coordinate
