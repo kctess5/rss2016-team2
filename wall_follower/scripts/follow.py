@@ -122,7 +122,15 @@ class Car(object):
 		self.first_laser_recieved = False 
 
 	def scan_callback(self, data):
-		print("recieved scan callback")
+		self.check_obstacles(data)
+		self.follow_wall(data)
+
+	def check_obstacles(self, data):
+		print("check for obstacles and disable driver if necessary")
+
+	def follow_wall(self, data):
+		print("check for obstacles and disable driver if necessary")
+		
 	 
 		
 
