@@ -1,8 +1,0 @@
-/home/racecar/racecar_team2_ws/racecar/wall_follower/build/CMakeFiles/clean_test_results.dir
-/home/racecar/racecar_team2_ws/racecar/wall_follower/build/CMakeFiles/clean_test_results_Project.dir
-/home/racecar/racecar_team2_ws/racecar/wall_follower/build/CMakeFiles/download_extra_data.dir
-/home/racecar/racecar_team2_ws/racecar/wall_follower/build/CMakeFiles/doxygen.dir
-/home/racecar/racecar_team2_ws/racecar/wall_follower/build/gtest/CMakeFiles/gtest.dir
-/home/racecar/racecar_team2_ws/racecar/wall_follower/build/gtest/CMakeFiles/gtest_main.dir
-/home/racecar/racecar_team2_ws/racecar/wall_follower/build/CMakeFiles/run_tests.dir
-/home/racecar/racecar_team2_ws/racecar/wall_follower/build/CMakeFiles/tests.dir

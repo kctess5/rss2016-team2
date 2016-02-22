@@ -1,2 +1,0 @@
-
--DCATKIN_DEVEL_PREFIX=/home/racecar/racecar_team2_ws/racecar/wall_follower/devel -DCMAKE_INSTALL_PREFIX=/home/racecar/racecar_team2_ws/racecar/wall_follower/install -G Unix Makefiles

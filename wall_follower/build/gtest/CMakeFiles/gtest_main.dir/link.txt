@@ -1,1 +1,0 @@
-/usr/bin/c++  -fPIC    -shared -Wl,-soname,libgtest_main.so -o libgtest_main.so CMakeFiles/gtest_main.dir/src/gtest_main.cc.o  -L/home/racecar/racecar_team2_ws/racecar/wall_follower/build/gtest/src -lpthread libgtest.so -lpthread -Wl,-rpath,/home/racecar/racecar_team2_ws/racecar/wall_follower/build/gtest/src:/home/racecar/racecar_team2_ws/racecar/wall_follower/build/gtest 

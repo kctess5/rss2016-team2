@@ -46,6 +46,7 @@ class TurtlesimOpenLoopNode:
         self.cmd_vel_pub.publish(cmd_vel_msg)
 
 if __name__ == "__main__":
+    print "testsetsetaseta"
     rospy.init_node("turtlesim_openloop_control_node")
     node = TurtlesimOpenLoopNode()
     rospy.spin()
