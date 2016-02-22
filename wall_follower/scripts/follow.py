@@ -22,6 +22,7 @@ class MotorDriver:
 		self.steering_angle = 0
 
 		self.frequency = 0.05
+
 		self.enabled = False
 		self.last_toggle = time.clock()
 		self.killed = False
@@ -48,7 +49,7 @@ class MotorDriver:
 			self.enabled = not self.enabled
 			self.last_toggle = time.clock()
 
-	def set_speed(self, speed):
+def set_speed(self, speed):
 		self.motor_speed = speed
 
 	def set_angle(self, angle):
@@ -67,6 +68,7 @@ class SimulationDriver():
 		print("Creating simulation driver")
 		self.cmd_vel_publisher = rospy.Publisher('/racecar/ackermann_cmd_mux/input/teleop', 
 			AckermannDriveStamped, queue_size=10)
+		self.laser_sub = rospy.Subscriber('/racecar/laser/scan', LaserScan, self.laserCallback)
 		self.motor_speed = 0
 		self.steering_angle = 0
 
@@ -94,6 +96,13 @@ class SimulationDriver():
 
 	def set_angle(self, angle):
 		self.steering_angle = angle
+
+        def laserCallback(self, laser_msg):
+                straight_ahead = laser_msg.ranges[len(laser_msg.ranges)/2]
+                if straight_ahead < 20:
+                    self.enabled = False
+                else:
+                    self.enabled = True #WARNING anyone else setting enabled needs to coordinate
 
 	def timer_callback(self, event):
 		if self.enabled:
