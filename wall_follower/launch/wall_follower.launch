@@ -1,0 +1,3 @@
+<launch>
+	<node name="follow" pkg="wall_follower" type="follow.py" />
+</launch>

@@ -49,7 +49,7 @@ class MotorDriver:
 			self.enabled = not self.enabled
 			self.last_toggle = time.clock()
 
-def set_speed(self, speed):
+	def set_speed(self, speed):
 		self.motor_speed = speed
 
 	def set_angle(self, angle):
