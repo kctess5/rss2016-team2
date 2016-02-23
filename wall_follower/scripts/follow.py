@@ -167,7 +167,7 @@ class Car(object):
 
 		# wall following constants
 		filter_size = 5
-		kp = 0.3
+		kp = 0.2
 		kd = 1.5
 
 		data.ranges = signal.medfilt(data.ranges, filter_size)
