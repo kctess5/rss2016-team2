@@ -52,6 +52,12 @@ class MotorDriver:
 			self.enabled = not self.enabled
 			self.last_toggle = time.clock()
 
+	def disable(self):
+		self.enabled = False
+
+	def enable(self):
+		self.enabled = True
+
 	def set_speed(self, speed):
 		self.motor_speed = speed
 
@@ -71,7 +77,6 @@ class SimulationDriver():
 		print("Creating simulation driver")
 		self.cmd_vel_publisher = rospy.Publisher('/racecar/ackermann_cmd_mux/input/teleop', 
 			AckermannDriveStamped, queue_size=10)
-		self.laser_sub = rospy.Subscriber('/racecar/laser/scan', LaserScan, self.laserCallback)
 		self.motor_speed = 0
 		self.steering_angle = 0
 
@@ -100,12 +105,11 @@ class SimulationDriver():
 	def set_angle(self, angle):
 		self.steering_angle = angle
 
-        def laserCallback(self, laser_msg):
-                straight_ahead = laser_msg.ranges[len(laser_msg.ranges)/2]
-                if straight_ahead < 2:
-                    self.enabled = False
-                else:
-                    self.enabled = True #WARNING anyone else setting enabled needs to coordinate
+	def disable(self):
+		self.enabled = False
+
+	def enable(self):
+		self.enabled = True
 
 	def timer_callback(self, event):
 		if self.enabled:
@@ -146,7 +150,12 @@ class Car(object):
 		self.follow_wall(data)
 
 	def check_obstacles(self, data):
-		pass
+		STRAIGHT_AHEAD = 0 # radians
+		TOO_CLOSE = 1 # meter
+                if distance_at(STRAIGHT_AHEAD, laser_msg) < TOO_CLOSE:
+                    self.motor_driver.disable()
+                else:
+                    self.motor_driver.enable() #WARNING anyone else setting enabled needs to coordinate
 		# print("check for obstacles and disable driver if necessary")
 
 	def wall_distance(self, data):
