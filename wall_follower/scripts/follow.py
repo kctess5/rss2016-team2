@@ -82,6 +82,7 @@ class SimulationDriver():
 
 		self.frequency = 0.1
 		self.enabled = True
+		self.killed = False
 
 		rospy.Timer(rospy.Duration(self.frequency), self.timer_callback)
 
@@ -152,10 +153,10 @@ class Car(object):
 	def check_obstacles(self, data):
 		STRAIGHT_AHEAD = 0 # radians
 		TOO_CLOSE = 1 # meter
-                if distance_at(STRAIGHT_AHEAD, data) < TOO_CLOSE:
-                    self.motor_driver.disable()
-                else:
-                    self.motor_driver.enable() #WARNING anyone else setting enabled needs to coordinate
+		if distance_at(STRAIGHT_AHEAD, data) < TOO_CLOSE:
+			self.motor_driver.disable()
+		else:
+			self.motor_driver.enable() #WARNING anyone else setting enabled needs to coordinate
 		# print("check for obstacles and disable driver if necessary")
 
 	def wall_distance(self, data):
@@ -186,7 +187,7 @@ class Car(object):
 		# wall following constants
 		filter_size = 5
 		kp = 0.2
-		kd = 1.5
+		kd = 2
 
 		data.ranges = signal.medfilt(data.ranges, filter_size)
 
@@ -203,10 +204,21 @@ class Car(object):
 		self.motor_driver.set_angle(control)
 		# self.motor_driver.set_angle(0)
 		self.motor_driver.set_speed(2)
-		
+
+import os
+
+TURN_DIR = RIGHT
 
 if __name__ == '__main__':
-	car = Car(True, RIGHT)
+	if os.environ['ROS_ENV'] == 'simulation':
+		print("Simulation environment")
+		car = Car(True, TURN_DIR)
+	elif os.environ['ROS_ENV'] == 'racecar':
+		print("Racecar environment")
+		car = Car(False, TURN_DIR)
+	else:
+		print("Unknown execution environment. Use racecar_env.sh or simulation_env.sh to specify.")
+
 	rospy.spin()
 	
 
