@@ -152,7 +152,7 @@ class Car(object):
 	def check_obstacles(self, data):
 		STRAIGHT_AHEAD = 0 # radians
 		TOO_CLOSE = 1 # meter
-                if distance_at(STRAIGHT_AHEAD, laser_msg) < TOO_CLOSE:
+                if distance_at(STRAIGHT_AHEAD, data) < TOO_CLOSE:
                     self.motor_driver.disable()
                 else:
                     self.motor_driver.enable() #WARNING anyone else setting enabled needs to coordinate
