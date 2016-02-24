@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from __future__ import print_function
 import rospy
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import LaserScan, Joy
 from rospy.numpy_msg import numpy_msg
 from scipy import signal
 import math
@@ -10,6 +10,7 @@ from scipy.signal import argrelextrema
 import time
 from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
 
+Y_BUTTON = 3
 
 LEFT = 1
 RIGHT = 2
@@ -17,7 +18,7 @@ RIGHT = 2
 # controls the drive state for both speed and steering
 class MotorDriver:
 	def __init__(self):
-		self.motor_cmd_pub = rospy.Publisher("vesc/ackermann_cmd", AckermannDriveStamped)
+		self.motor_cmd_pub = rospy.Publisher("/vesc/ackermann_cmd_mux/input/teleop", AckermannDriveStamped)
 		 # subscribe to joy topic
 		self.joy_sub = rospy.Subscriber("vesc/joy", Joy, self.joyCallback)
 
@@ -27,6 +28,7 @@ class MotorDriver:
 		self.frequency = 0.05
 
 		self.enabled = False
+		self.joy_enabled = False
 		self.last_toggle = time.clock()
 		self.killed = False
 
@@ -48,8 +50,8 @@ class MotorDriver:
 
 	def joyCallback(self, joy_msg):
 		# debounced enable toggle
-		if joy_msg.buttons[Y_BUTTON] == 1 and time.clock() - self.last_toggle > 0.5:
-			self.enabled = not self.enabled
+		if joy_msg.buttons[Y_BUTTON] == 1 and time.clock() - self.last_toggle > 0.25:
+			self.joy_enabled = not self.joy_enabled
 			self.last_toggle = time.clock()
 
 	def disable(self):
@@ -59,13 +61,15 @@ class MotorDriver:
 		self.enabled = True
 
 	def set_speed(self, speed):
-		self.motor_speed = speed
+		if self.joy_enabled:
+			self.motor_speed = speed
 
 	def set_angle(self, angle):
-		self.steering_angle = angle
+		if self.joy_enabled:
+			self.steering_angle = angle
 
 	def timer_callback(self, event):
-		if self.enabled:
+		if self.enabled and self.joy_enabled:
 			self.killed = False
 			self.motor_cmd_pub.publish(self.make_drive_msg(self.motor_speed, -1 * self.steering_angle))
 		elif not self.killed:
@@ -141,7 +145,10 @@ class Car(object):
 			self.motor_driver = MotorDriver()
 
 	def configure(self):
-		self.LASER_SCAN_TOPIC = '/racecar/laser/scan'
+		if self.simulate:
+			self.LASER_SCAN_TOPIC = '/racecar/laser/scan'
+		else:
+			self.LASER_SCAN_TOPIC = '/scan'
 		self.first_laser_recieved = False 
 		self.target_dist = 1 # in meters
 		self.target_angle = 0 # in radians
@@ -154,6 +161,7 @@ class Car(object):
 		STRAIGHT_AHEAD = 0 # radians
 		TOO_CLOSE = 1 # meter
 		if distance_at(STRAIGHT_AHEAD, data) < TOO_CLOSE:
+			print("obstacles found")
 			self.motor_driver.disable()
 		else:
 			self.motor_driver.enable() #WARNING anyone else setting enabled needs to coordinate
@@ -185,8 +193,8 @@ class Car(object):
 		# positive angle turns: right
 
 		# wall following constants
-		filter_size = 5
-		kp = 0.2
+		filter_size = 141
+		kp = 0.3
 		kd = 2
 
 		data.ranges = signal.medfilt(data.ranges, filter_size)
@@ -201,9 +209,11 @@ class Car(object):
 
 		control = angle_term + distance_term
 
+		control = np.clip(control, -0.3, 0.3)
+
 		self.motor_driver.set_angle(control)
 		# self.motor_driver.set_angle(0)
-		self.motor_driver.set_speed(2)
+		self.motor_driver.set_speed(1)
 
 import os
 
