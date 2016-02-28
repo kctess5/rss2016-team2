@@ -1,0 +1,3 @@
+<launch>
+	<node name="detect" pkg="cone_follower" type="detect.py" />
+</launch>
