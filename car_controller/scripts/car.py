@@ -1,15 +1,18 @@
 #!/usr/bin/env python
+
 from __future__ import print_function
 import rospy
-from sensor_msgs.msg import LaserScan
-from rospy.numpy_msg import numpy_msg
-from scipy import signal
-import math
-import numpy as np
-from scipy.signal import argrelextrema
 import time
-from racecar.car_msgs import HighControl, DirectDrive
-from car_msgs
+from racecar.car_msgs import HighControl
+
+''' Joystick constants
+'''
+-
+A_BUTTON = 0
+B_BUTTON = 1
+X_BUTTON = 2
+Y_BUTTON = 3
+
 
 ''' The low level driver (LLDriver) classes handle low level racecar interaction
 	for whatever runtime environments exist. For now this includes:
@@ -121,258 +124,89 @@ class HLDriver(object):
 
 # accepts and executes a high level direct drive command
 class DirectDrive(HLDriver):
-	def execute(self, direct_drive_msg):
-		self.llDriver.set_angle(direct_drive_msg.steering_angle)
-		self.llDriver.set_speed(direct_drive_msg.speed)
+	def execute(self, control_msg):
+		self.llDriver.set_angle(control_msg.drive_msg.steering_angle)
+		self.llDriver.set_speed(control_msg.drive_msg.speed)
 
 # accepts and executes a high level spline following command
 class SplineDrive(HLDriver):
-	def execute(self, direct_drive_msg):
+	def execute(self, control_msg):
 		# TODO: set up a timer callback, set the llDriver to the correct level at each given time
 		pass
 
-''' The ModuleManager manages and multiplexes all of the available RACECAR control modules
+''' The Car manages and multiplexes all of the available RACECAR control modules
 	Changes modes based off of the joypad input at runtime
 '''
 
-class ModuleManager(object):
+class Car(object):
 	def __init__(self):
 		env = rospy.get_param('/car/environment')
 
 		self.joy_sub = rospy.Subscriber("vesc/joy", Joy, self.joyCallback)
-		self.control_sub = rospy.Subscriber("/car/high_control", HighControl, self.joyCallback)
+		self.control_sub = rospy.Subscriber("/car/high_control", HighControl, self.controlCallback)
 
 		self.enabled = False
+		self.last_toggle = time.clock()
+
+		# keep track of all of the various high level modules that are contributing
+		self.active_module = None
+		self.modules = []
 
 		if env == 'simulation':
 			self.llDriver = LLSimulator(enabled)
 		elif env == 'racecar':
 			self.llDriver = LLMotor(enabled)
 
-		self.directDriver = DirectDrive(self.llDriver)
-		self.directDriver = DirectDrive(self.llDriver)
-
-
-
-
-
-LEFT = 1
-RIGHT = 2
-
-class Driver:
-	def __init__(self):
-		self.frequency = 0.05
-
-		self.killed = False
-		self.enabled = False
-
-		self.last_toggle = time.clock()
-
-		self.joy_sub = rospy.Subscriber("vesc/joy", Joy, self.joyCallback)
-		rospy.Timer(rospy.Duration(self.frequency), self.timer_callback)
+		control_map = {
+			'direct_drive': DirectDrive(self.llDriver),
+			'spline_control': SplineDrive(self.llDriver)
+		}
 
 	def joyCallback(self, joy_msg):
-		# debounced enable toggle
-		if joy_msg.buttons[Y_BUTTON] == 1 and time.clock() - self.last_toggle > 0.5:
-			self.enabled = not self.enabled
+		# toggle the the active state of the low level motor driver
+
+		if time.clock() - self.last_toggle > 0.15: # debounce controller buttons
+
+			if joy_msg.buttons[Y_BUTTON] == 1:
+				self.llDriver.toggle_enabled()
+				
+			if joy_msg.buttons[X_BUTTON] == 1:
+				self.active_module = (self.active_module + 1) % len(self.modules)
+
+			if joy_msg.buttons[B_BUTTON] == 1:
+				self.active_module = (self.active_module - 1) % len(self.modules)
+
+			if joy_msg.buttons[A_BUTTON] == 1:
+				log("Active module: " + self.modules[self.active_module])
+
 			self.last_toggle = time.clock()
 
+	def controlCallback(self, control_msg):
+		if (control_msg.subscribe):
+			self.subscribe(control_msg)
+		if (control_msg.unsubscribe):
+			self.unsubscribe(control_msg)
 
-# controls the drive state for both speed and steering
-class MotorDriver:
-	def __init__(self):
-		self.motor_cmd_pub = rospy.Publisher("vesc/ackermann_cmd", AckermannDriveStamped)
-		 # subscribe to joy topic
-		self.joy_sub = rospy.Subscriber("vesc/joy", Joy, self.joyCallback)
+		# pass the message through to the correct controller
+		if control_msg.module == self.modules[self.active_module]:
+			self.control_map[control_msg.msg_type].execute(control_msg)
 
-		self.motor_speed = 0
-		self.steering_angle = 0
-
-		self.frequency = 0.05
-
-		self.enabled = False
-		self.last_toggle = time.clock()
-		self.killed = False
-
-		rospy.Timer(rospy.Duration(self.frequency), self.timer_callback)
-
-	# constructs an AckermannDriveStamped message ready for publishing
-	def make_drive_msg(self, speed=0, steering_angle=0, acceleration=0, jerk=0, steering_angle_velocity=0):
-		drive_msg_stamped = AckermannDriveStamped()
-		drive_msg = AckermannDrive()
-
-		drive_msg.speed = speed
-		drive_msg.acceleration = acceleration
-		drive_msg.jerk = jerk
-		drive_msg.steering_angle = steering_angle
-		drive_msg.steering_angle_velocity = steering_angle_velocity
-
-		drive_msg_stamped.drive = drive_msg
-		return drive_msg_stamped
-
-	def joyCallback(self, joy_msg):
-		# debounced enable toggle
-		if joy_msg.buttons[Y_BUTTON] == 1 and time.clock() - self.last_toggle > 0.5:
-			self.enabled = not self.enabled
-			self.last_toggle = time.clock()
-
-	def disable(self):
-		self.enabled = False
-
-	def enable(self):
-		self.enabled = True
-
-	def set_speed(self, speed):
-		self.motor_speed = speed
-
-	def set_angle(self, angle):
-		self.steering_angle = angle
-
-	def timer_callback(self, event):
-		if self.enabled:
-			self.killed = False
-			self.motor_cmd_pub.publish(self.make_drive_msg(self.motor_speed, -1 * self.steering_angle))
-		elif not self.killed:
-			self.motor_cmd_pub.publish(self.make_drive_msg(0,0))
-			self.killed = True
-
-class SimulationDriver():
-	def __init__(self):
-		print("Creating simulation driver")
-		self.cmd_vel_publisher = rospy.Publisher('/racecar/ackermann_cmd_mux/input/teleop', 
-			AckermannDriveStamped, queue_size=10)
-		self.motor_speed = 0
-		self.steering_angle = 0
-
-		self.frequency = 0.1
-		self.enabled = True
-		self.killed = False
-
-		rospy.Timer(rospy.Duration(self.frequency), self.timer_callback)
-
-	# constructs a Ackermann Drive message ready for publishing
-	def make_drive_msg(self, speed=0, steering_angle=0, acceleration=0, jerk=0, steering_angle_velocity=0):
-		drive_msg_stamped = AckermannDriveStamped()
-		drive_msg = AckermannDrive()
-
-		drive_msg.speed = speed
-		drive_msg.acceleration = acceleration
-		drive_msg.jerk = jerk
-		drive_msg.steering_angle = steering_angle
-		drive_msg.steering_angle_velocity = steering_angle_velocity
-
-		drive_msg_stamped.drive = drive_msg
-		return drive_msg_stamped
-
-	def set_speed(self, speed):
-		self.motor_speed = speed
-
-	def set_angle(self, angle):
-		self.steering_angle = angle
-
-	def disable(self):
-		self.enabled = False
-
-	def enable(self):
-		self.enabled = True
-
-	def timer_callback(self, event):
-		if self.enabled:
-			self.killed = False
-			self.cmd_vel_publisher.publish(self.make_drive_msg(self.motor_speed, self.steering_angle))
-		elif not self.killed:
-			self.cmd_vel_publisher.publish(self.make_drive_msg(0,0))
-			self.killed = True
-
-class Car(object):
-	def __init__(self, simulate=False):
-		self.simulate = simulate
-		self.configure()
-		self.node = rospy.init_node('car_main', anonymous=True)
-
-		self.direct_control_callback = rospy.Subscriber(self.DIRECT_CONTROL_TOPIC, numpy_msg(LaserScan), self.scan_callback)
-
-		if simulate:
-			self.motor_driver = SimulationDriver()
+	def subscribe(self, control_msg):
+		# add the given control module from the registry
+		if control_msg.module in self.modules:
+			log("Module is already subscribed")
 		else:
-			self.motor_driver = MotorDriver()
+			self.modules.append(control_msg)
 
-	def configure(self):
-		self.DIRECT_CONTROL_TOPIC = '/car/direct_control'
+	def unsubscribe(self, control_msg):
+		# remove the given control module from the registry
 
-	def scan_callback(self, data):
-		self.check_obstacles(data)
-		self.follow_wall(data)
-
-	def check_obstacles(self, data):
-		STRAIGHT_AHEAD = 0 # radians
-		TOO_CLOSE = 1 # meter
-		if distance_at(STRAIGHT_AHEAD, data) < TOO_CLOSE:
-			self.motor_driver.disable()
+		if control_msg.module in self.modules:
+			log("Removing module " + control_msg.module + " from the racecar.")
+			self.modules.remove(control_msg.module)
 		else:
-			self.motor_driver.enable() #WARNING anyone else setting enabled needs to coordinate
-		# print("check for obstacles and disable driver if necessary")
-
-	def wall_distance(self, data):
-		if self.follow == RIGHT:
-			angle = - math.pi / 2
-		else:
-			angle = math.pi / 2
-
-		return distance_at(angle, data)
-
-	def wall_angle(self, fan_angle, data):
-		if self.follow == RIGHT:
-			center_angle = - math.pi / 2
-		else:
-			center_angle = math.pi / 2
-
-		a = distance_at(center_angle - fan_angle, data)
-		b = distance_at(center_angle + fan_angle, data)
-		d = distance_at(center_angle, data)
-
-		delta = a - b
-
-		return np.arcsin(delta / np.sqrt(delta * delta + d*d))
-
-	def follow_wall(self, data):
-		# positive angle turns: right
-
-		# wall following constants
-		filter_size = 5
-		kp = 0.2
-		kd = 2
-
-		data.ranges = signal.medfilt(data.ranges, filter_size)
-
-		distance_term = kp * (self.wall_distance(data) - self.target_dist)
-		angle_term = kd * ( self.target_angle - self.wall_angle(0.25, data))
-
-		# print("angle:", self.wall_angle(0.25, data))
-		# print("distance:", self.wall_distance(data))
-		# print("angle term", angle_term)
-		# print("distance term", distance_term)
-
-		control = angle_term + distance_term
-
-		self.motor_driver.set_angle(control)
-		# self.motor_driver.set_angle(0)
-		self.motor_driver.set_speed(2)
-
-import os
-
-TURN_DIR = RIGHT
+			log("Module " + control_msg.module + " does not already exist in the racecar.")
 
 if __name__ == '__main__':
-	if os.environ['ROS_ENV'] == 'simulation':
-		print("Simulation environment")
-		car = Car(True, TURN_DIR)
-	elif os.environ['ROS_ENV'] == 'racecar':
-		print("Racecar environment")
-		car = Car(False, TURN_DIR)
-	else:
-		print("Unknown execution environment. Use racecar_env.sh or simulation_env.sh to specify.")
-
+	car = Car()
 	rospy.spin()
-	
-
