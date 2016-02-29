@@ -3,11 +3,14 @@
 from __future__ import print_function
 import rospy
 import time
-from racecar.car_msgs import HighControl
+
+from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
+from car_msgs.msg import HighControl
+from sensor_msgs.msg import Joy
 
 ''' Joystick constants
 '''
--
+
 A_BUTTON = 0
 B_BUTTON = 1
 X_BUTTON = 2
@@ -25,6 +28,7 @@ Y_BUTTON = 3
 class LLDriver(object):
 	""" A low level driver for some kind of mobile platform """
 	def __init__(self, enabled):
+		rospy.loginfo("Initializing low level driver: %s  enabled: %r", self.__class__.__name__, enabled)
 		self.enabled = enabled
 
 		self.motor_speed = 0
@@ -35,14 +39,20 @@ class LLDriver(object):
 		self.frequency = 0.05
 		rospy.Timer(rospy.Duration(self.frequency), self.timer_callback)
 
+	def publish_drive_command(self, speed=0, angle=0):
+		print ("Must be defined by super class!")
+
 	def disable(self):
+		rospy.loginfo("Disabling low level driver: %s", self.__class__.__name__)
 		self.enabled = False
 
 	def enable(self):
+		rospy.loginfo("Disabling low level driver: %s", self.__class__.__name__)
 		self.enabled = True
 
 	def toggle_enabled(self):
 		self.enabled = not self.enabled
+		rospy.loginfo("Toggling low level driver: %s  enabled: %r", self.__class__.__name__, enabled)
 
 	def set_speed(self, speed):
 		self.motor_speed = speed
@@ -50,8 +60,7 @@ class LLDriver(object):
 	def set_angle(self, angle):
 		self.steering_angle = angle
 
-	def timer_callback(self):
-		def timer_callback(self, event):
+	def timer_callback(self, event):
 		if self.enabled:
 			self.killed = False
 			self.publish_drive_command()
@@ -62,12 +71,17 @@ class LLDriver(object):
 class LLMotor(LLDriver):
 	""" A low level motor and steering controller for the RACECAR platform """
 	def __init__(self, *args, **kwargs):
-		super(LLMotor, self).__init__(self, *args, **kwargs)
+		super(LLMotor, self).__init__(*args, **kwargs)
 
-		self.motor_cmd_pub = rospy.Publisher("vesc/ackermann_cmd", AckermannDriveStamped)
+		self.motor_cmd_pub = rospy.Publisher("vesc/ackermann_cmd", AckermannDriveStamped, queue_size=10)
 
-	def publish_drive_command(self, speed=self.motor_speed, steering_angle=self.steering_angle, \
+	def publish_drive_command(self, speed=-999, steering_angle=-999, \
 		acceleration=0, jerk=0, steering_angle_velocity=0):
+
+		if speed == -999:
+			speed = self.motor_speed
+		if steering_angle == -999:
+			steering_angle = self.steering_angle
 
 		drive_msg_stamped = AckermannDriveStamped()
 		drive_msg = AckermannDrive()
@@ -84,13 +98,20 @@ class LLMotor(LLDriver):
 
 class LLSimulator(LLDriver):
 	""" A low level motor and steering controller for the Gazebo simulation platform """
-	def __init__(self):
+	def __init__(self, *args, **kwargs):
+		super(LLSimulator, self).__init__(*args, **kwargs)
+
 		self.motor_cmd_pub = rospy.Publisher('/racecar/ackermann_cmd_mux/input/teleop', 
-			AckermannDriveStamped)
+			AckermannDriveStamped, queue_size=10)
 
 	# constructs a Ackermann Drive message ready for publishing
-	def publish_drive_command(self, speed=self.motor_speed, steering_angle=self.steering_angle, \
+	def publish_drive_command(self, speed=-999, steering_angle=-999, \
 		acceleration=0, jerk=0, steering_angle_velocity=0):
+
+		if speed == -999:
+			speed = self.motor_speed
+		if steering_angle == -999:
+			steering_angle = self.steering_angle
 
 		drive_msg_stamped = AckermannDriveStamped()
 		drive_msg = AckermannDrive()
@@ -112,6 +133,7 @@ class LLSimulator(LLDriver):
 
 class HLDriver(object):
 	def __init__(self, llDriver):
+		rospy.loginfo("Initializing high level driver: %s", self.__class__.__name__)
 		self.llDriver = llDriver
 
 	# pass through enable/disable commands to the low level driver
@@ -140,12 +162,16 @@ class SplineDrive(HLDriver):
 
 class Car(object):
 	def __init__(self):
+		self.node = rospy.init_node('car_main', anonymous=True)
+
 		env = rospy.get_param('/car/environment')
+
+		rospy.loginfo("Initializing high level RACECAR controller.")
 
 		self.joy_sub = rospy.Subscriber("vesc/joy", Joy, self.joyCallback)
 		self.control_sub = rospy.Subscriber("/car/high_control", HighControl, self.controlCallback)
 
-		self.enabled = False
+		self.enabled = True
 		self.last_toggle = time.clock()
 
 		# keep track of all of the various high level modules that are contributing
@@ -153,14 +179,19 @@ class Car(object):
 		self.modules = []
 
 		if env == 'simulation':
-			self.llDriver = LLSimulator(enabled)
+			self.llDriver = LLSimulator(self.enabled)
 		elif env == 'racecar':
-			self.llDriver = LLMotor(enabled)
+			self.llDriver = LLMotor(self.enabled)
 
-		control_map = {
+		self.control_map = {
 			'direct_drive': DirectDrive(self.llDriver),
 			'spline_control': SplineDrive(self.llDriver)
 		}
+
+	def getActiveModule(self):
+		if self.active_module == None:
+			return None
+		return self.modules[self.active_module]
 
 	def joyCallback(self, joy_msg):
 		# toggle the the active state of the low level motor driver
@@ -168,45 +199,62 @@ class Car(object):
 		if time.clock() - self.last_toggle > 0.15: # debounce controller buttons
 
 			if joy_msg.buttons[Y_BUTTON] == 1:
+				rospy.loginfo("Toggling module: %s", self.getActiveModule())
 				self.llDriver.toggle_enabled()
 				
 			if joy_msg.buttons[X_BUTTON] == 1:
 				self.active_module = (self.active_module + 1) % len(self.modules)
+				rospy.loginfo("Set active module: %s", self.getActiveModule())
 
 			if joy_msg.buttons[B_BUTTON] == 1:
 				self.active_module = (self.active_module - 1) % len(self.modules)
+				rospy.loginfo("Set active module: %s", self.getActiveModule())
 
 			if joy_msg.buttons[A_BUTTON] == 1:
-				log("Active module: " + self.modules[self.active_module])
+				rospy.loginfo("Active module: %s", self.getActiveModule())
 
 			self.last_toggle = time.clock()
 
 	def controlCallback(self, control_msg):
 		if (control_msg.subscribe):
 			self.subscribe(control_msg)
+
+		# pass the message through to the correct controller
+		if control_msg.module == self.getActiveModule():
+			rospy.logdebug("Reciving control message from module: %s", control_msg.module)
+			self.control_map[control_msg.msg_type].execute(control_msg)
+
 		if (control_msg.unsubscribe):
 			self.unsubscribe(control_msg)
 
-		# pass the message through to the correct controller
-		if control_msg.module == self.modules[self.active_module]:
-			self.control_map[control_msg.msg_type].execute(control_msg)
-
 	def subscribe(self, control_msg):
 		# add the given control module from the registry
+		rospy.loginfo("Adding module %s to the high level controller", control_msg.module)
 		if control_msg.module in self.modules:
-			log("Module is already subscribed")
+			rospy.loginfo("Module %s is already subscribed", control_msg.module)
 		else:
-			self.modules.append(control_msg)
+			self.modules.append(control_msg.module)
+
+			if self.active_module == None:
+				self.active_module = 0
 
 	def unsubscribe(self, control_msg):
 		# remove the given control module from the registry
-
+		rospy.loginfo("Removing module %s to the high level controller", control_msg.module)
 		if control_msg.module in self.modules:
-			log("Removing module " + control_msg.module + " from the racecar.")
+			active = self.getActiveModule()
 			self.modules.remove(control_msg.module)
+
+			# special logic to reset active module
+			if control_msg.module == active:
+				if len(self.modules) == 0:
+					self.active_module = None
+				else:
+					self.active_module = 0
 		else:
-			log("Module " + control_msg.module + " does not already exist in the racecar.")
+			rospy.loginfo("Module %s does not already exist in the racecar.", control_msg.module)
 
 if __name__ == '__main__':
 	car = Car()
 	rospy.spin()
+

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(vesc_msgs)
+project(car_msgs)
 
 find_package(catkin REQUIRED COMPONENTS
   std_msgs
@@ -9,8 +9,8 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   DIRECTORY msg
   FILES
-  VescState.msg
-  VescStateStamped.msg
+  DirectDrive.msg
+  HighControl.msg
 )
 generate_messages(
   DEPENDENCIES
