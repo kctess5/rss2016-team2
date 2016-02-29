@@ -8,7 +8,8 @@ import math
 import numpy as np
 from scipy.signal import argrelextrema
 import time
-from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
+from racecar.car_msgs import HighControl, DirectDrive
+from car_msgs
 
 ''' The low level driver (LLDriver) classes handle low level racecar interaction
 	for whatever runtime environments exist. For now this includes:
@@ -137,6 +138,9 @@ class SplineDrive(HLDriver):
 class ModuleManager(object):
 	def __init__(self):
 		env = rospy.get_param('/car/environment')
+
+		self.joy_sub = rospy.Subscriber("vesc/joy", Joy, self.joyCallback)
+		self.control_sub = rospy.Subscriber("/car/high_control", HighControl, self.joyCallback)
 
 		self.enabled = False
 

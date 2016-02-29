@@ -1,18 +1,18 @@
 <?xml version="1.0"?>
 <package>
-  <name>vesc_msgs</name>
+  <name>car_msgs</name>
   <version>0.0.1</version>
   <description>
-    ROS message definitions for the Vedder VESC open source motor controller.
+    ROS message definitions for RSS team 2.
   </description>
 
-  <maintainer email="boulet@ll.mit.edu">Michael T. Boulet</maintainer>
-  <author email="boulet@ll.mit.edu">Michael T. Boulet</author>
-  <license>BSD</license>
+  <maintainer email="chwalsh@mit.edu">Corey Walsh</maintainer>
+  <author email="chwalsh@mit.edu">Corey Walsh</author>
+  <license>MIT</license>
 
-  <url type="website">http://ros.org/wiki/vesc_msgs</url>
-  <url type="repository">https://github.mit.edu/racecar/vesc</url>
-  <url type="bugtracker">https://github.mit.edu/racecar/vesc/issues</url>
+  <!-- <url type="website">http://ros.org/wiki/car_msgs</url> -->
+  <url type="repository">https://github.mit.edu/rss2016-team2/racecar</url>
+  <url type="bugtracker">https://github.mit.edu/rss2016-team2/racecar/issues</url>
 
   <buildtool_depend>catkin</buildtool_depend>
 
