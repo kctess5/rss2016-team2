@@ -1,0 +1,3 @@
+<launch>
+	<node name="car" pkg="car_controller" type="car.py" />
+</launch>
