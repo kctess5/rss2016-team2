@@ -4,6 +4,7 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Float32MultiArray
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
+from cone_follower.msg import PolarPoints, PolarPoint
 from rospy.numpy_msg import numpy_msg
 from scipy import signal
 import math
@@ -17,8 +18,8 @@ class KeyPointsDetector(object):
 		rospy.init_node('key_points_detector', anonymous=True)
 		LASER_SCAN_TOPIC = "/scan"
 		self.sub = rospy.Subscriber(LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
-		self.pub = rospy.Publisher('/cone/key_points', Float32MultiArray)
-		self.pub_viz = rospy.Publisher('/cone/key_points_viz', Marker)
+		self.pub = rospy.Publisher('/cone/key_points', PolarPoints, queue_size=10)
+		self.pub_viz = rospy.Publisher('/cone/key_points_viz', Marker, queue_size=10)
 
                 # Configuration
 		self.filter_width = 21
@@ -36,8 +37,8 @@ class KeyPointsDetector(object):
                 self.publish_1d_array(key_angles, data.header)
 
         def publish_1d_array(self, array, header):
-                data = Float32MultiArray()
-                data.data = [angle for angle, distance in array]
+                data = PolarPoints()
+                data.points = [PolarPoint(angle=angle, distance=distance) for angle, distance in array]
                 self.pub.publish(data)
 
                 # publish points to rviz
