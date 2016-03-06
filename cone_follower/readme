@@ -1,0 +1,19 @@
+scripts/coord.py contains a visual debug environment. Run with
+
+$ rosrun cone_follower coord.py
+
+you will also need:
+
+- the rosbag (on slack): rosbag play 2016-...-cone.bag -l -r .25 -s [start time]
+	* use -u [duration] to set how long it should play. useful for debugging a very small time section in the bag
+	* -l loops
+	* -s is start time
+
+- the keypoint detector (key_points_detector.py)
+	$ rosrun cone_follower key_points_detector.py
+
+* if you don't run both of those, coord.py will hang and you might be confused
+
+
+Pro tips:
+- I like to develop on my macbook, rather than the VM. I use SSHFS to mount the file system of the VM (and sometimes the racecar) and then I use ssh -X to do xforwarding onto my host so that the visual environment works. I give this method a glowing endorsement.
