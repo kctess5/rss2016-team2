@@ -1,148 +1,31 @@
 #!/usr/bin/env python
 from __future__ import print_function
 import rospy
-from sensor_msgs.msg import LaserScan, Joy
+from sensor_msgs.msg import LaserScan
 from rospy.numpy_msg import numpy_msg
 from scipy import signal
 import math
 import numpy as np
-from scipy.signal import argrelextrema
-import time
-from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
-
-Y_BUTTON = 3
+from car_controller.control_module import ControlModule
 
 LEFT = 1
 RIGHT = 2
-
-# controls the drive state for both speed and steering
-class MotorDriver:
-	def __init__(self):
-		self.motor_cmd_pub = rospy.Publisher("/vesc/ackermann_cmd_mux/input/teleop", AckermannDriveStamped)
-		 # subscribe to joy topic
-		self.joy_sub = rospy.Subscriber("vesc/joy", Joy, self.joyCallback)
-
-		self.motor_speed = 0
-		self.steering_angle = 0
-
-		self.frequency = 0.05
-
-		self.enabled = False
-		self.joy_enabled = False
-		self.last_toggle = time.clock()
-		self.killed = False
-
-		rospy.Timer(rospy.Duration(self.frequency), self.timer_callback)
-
-	# constructs an AckermannDriveStamped message ready for publishing
-	def make_drive_msg(self, speed=0, steering_angle=0, acceleration=0, jerk=0, steering_angle_velocity=0):
-		drive_msg_stamped = AckermannDriveStamped()
-		drive_msg = AckermannDrive()
-
-		drive_msg.speed = speed
-		drive_msg.acceleration = acceleration
-		drive_msg.jerk = jerk
-		drive_msg.steering_angle = steering_angle
-		drive_msg.steering_angle_velocity = steering_angle_velocity
-
-		drive_msg_stamped.drive = drive_msg
-		return drive_msg_stamped
-
-	def joyCallback(self, joy_msg):
-		# debounced enable toggle
-		if joy_msg.buttons[Y_BUTTON] == 1 and time.clock() - self.last_toggle > 0.25:
-			self.joy_enabled = not self.joy_enabled
-			self.last_toggle = time.clock()
-
-	def disable(self):
-		self.enabled = False
-
-	def enable(self):
-		self.enabled = True
-
-	def set_speed(self, speed):
-		if self.joy_enabled:
-			self.motor_speed = speed
-
-	def set_angle(self, angle):
-		if self.joy_enabled:
-			self.steering_angle = angle
-
-	def timer_callback(self, event):
-		if self.enabled and self.joy_enabled:
-			self.killed = False
-			self.motor_cmd_pub.publish(self.make_drive_msg(self.motor_speed, -1 * self.steering_angle))
-		elif not self.killed:
-			self.motor_cmd_pub.publish(self.make_drive_msg(0,0))
-			self.killed = True
-
-class SimulationDriver():
-	def __init__(self):
-		print("Creating simulation driver")
-		self.cmd_vel_publisher = rospy.Publisher('/racecar/ackermann_cmd_mux/input/teleop', 
-			AckermannDriveStamped, queue_size=10)
-		self.motor_speed = 0
-		self.steering_angle = 0
-
-		self.frequency = 0.1
-		self.enabled = True
-		self.killed = False
-
-		rospy.Timer(rospy.Duration(self.frequency), self.timer_callback)
-
-	# constructs a Ackermann Drive message ready for publishing
-	def make_drive_msg(self, speed=0, steering_angle=0, acceleration=0, jerk=0, steering_angle_velocity=0):
-		drive_msg_stamped = AckermannDriveStamped()
-		drive_msg = AckermannDrive()
-
-		drive_msg.speed = speed
-		drive_msg.acceleration = acceleration
-		drive_msg.jerk = jerk
-		drive_msg.steering_angle = steering_angle
-		drive_msg.steering_angle_velocity = steering_angle_velocity
-
-		drive_msg_stamped.drive = drive_msg
-		return drive_msg_stamped
-
-	def set_speed(self, speed):
-		self.motor_speed = speed
-
-	def set_angle(self, angle):
-		self.steering_angle = angle
-
-	def disable(self):
-		self.enabled = False
-
-	def enable(self):
-		self.enabled = True
-
-	def timer_callback(self, event):
-		if self.enabled:
-			self.killed = False
-			self.cmd_vel_publisher.publish(self.make_drive_msg(self.motor_speed, self.steering_angle))
-		elif not self.killed:
-			self.cmd_vel_publisher.publish(self.make_drive_msg(0,0))
-			self.killed = True
 
 def distance_at(angle, data):
 	delta = angle - data.angle_min
 	index = int (delta / data.angle_increment)
 	return data.ranges[index]
 
-class Car(object):
+class WallFollower(ControlModule):
 	def __init__(self, simulate=False, follow=LEFT):
-		self.simulate = simulate
+		# initialize control module with name "test_module"
+		super(WallFollower, self).__init__("test_module")
+
 		self.follow = follow
-
+		self.simulate = simulate
 		self.configure()
-		
-		self.node = rospy.init_node('follower_main', anonymous=True)
-		self.scan_subscriber = rospy.Subscriber(self.LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
 
-		if simulate:
-			self.motor_driver = SimulationDriver()
-		else:
-			self.motor_driver = MotorDriver()
+		self.scan_subscriber = rospy.Subscriber(self.LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
 
 	def configure(self):
 		if self.simulate:
@@ -152,6 +35,8 @@ class Car(object):
 		self.first_laser_recieved = False 
 		self.target_dist = 1 # in meters
 		self.target_angle = 0 # in radians
+		self.MAX_SPEED = 1
+		self.speed = 0
 
 	def scan_callback(self, data):
 		self.check_obstacles(data)
@@ -162,9 +47,9 @@ class Car(object):
 		TOO_CLOSE = 1 # meter
 		if distance_at(STRAIGHT_AHEAD, data) < TOO_CLOSE:
 			print("obstacles found")
-			self.motor_driver.disable()
+			self.speed = 0
 		else:
-			self.motor_driver.enable() #WARNING anyone else setting enabled needs to coordinate
+			self.speed = self.MAX_SPEED
 		# print("check for obstacles and disable driver if necessary")
 
 	def wall_distance(self, data):
@@ -208,27 +93,26 @@ class Car(object):
 		# print("distance term", distance_term)
 
 		control = angle_term + distance_term
-
 		control = np.clip(control, -0.3, 0.3)
 
-		self.motor_driver.set_angle(control)
-		# self.motor_driver.set_angle(0)
-		self.motor_driver.set_speed(1)
+		control_msg = self.make_message("direct_drive")
+
+		control_msg.drive_msg.speed = self.speed
+		control_msg.drive_msg.steering_angle = control
+
+		self.control_pub.publish(control_msg)
 
 import os
 
 TURN_DIR = RIGHT
 
 if __name__ == '__main__':
-	if os.environ['ROS_ENV'] == 'simulation':
-		print("Simulation environment")
-		car = Car(True, TURN_DIR)
-	elif os.environ['ROS_ENV'] == 'racecar':
-		print("Racecar environment")
-		car = Car(False, TURN_DIR)
-	else:
-		print("Unknown execution environment. Use racecar_env.sh or simulation_env.sh to specify.")
+	wf = WallFollower(True, RIGHT)
 
+	def kill():
+		print ("unsubscribe")
+		wf.unsubscribe()
+
+	rospy.on_shutdown(kill)
 	rospy.spin()
-	
 
