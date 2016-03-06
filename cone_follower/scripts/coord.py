@@ -12,60 +12,7 @@ from rospy.numpy_msg import numpy_msg
 import time
 import matplotlib.pyplot as plt
 import math
-
-
-# class Visualization(object):
-# 	"""docstring for Visualization"""
-# 	def __init__(self):
-# 		plt.ion()
-# 		#Set up plot
-# 		self.fig = plt.figure(figsize=plt.figaspect(2.))
-		
-# 		self.ax0 = self.fig.add_subplot(1,2,1)
-
-# 		self.laser_scanner = self.ax0.plot([],[], '.')
-
-# 		self.ax0.set_ylim(-1, 25)
-# 		self.ax0.set_xlim(-math.pi, +math.pi)
-# 		self.ax0.invert_xaxis()
-# 		self.ax0.grid()
-		
-# 		self.ax1 = self.fig.add_subplot(1,2,2) 
-# 		self.ax1.set_ylim(-1, 25)
-# 		self.ax1.set_xlim(-10, 10)
-# 		self.ax1.invert_xaxis()
-# 		self.ax1.grid()
-# 		self.laser_euclid, = self.ax1.plot([],[], '.')
-# 		self.laser_euclid_eroded, = self.ax1.plot([],[], 'r.')
-# 		self.ax1.plot(0,0, 'ko')
-# 		self.current_heading_angle, = self.ax1.plot([0,0],[0,1], 'k-')
-# 		self.desired_heading_angle, = self.ax1.plot([],[], 'g-')
-# 		self.selected_maneuver, = self.ax1.plot([],[], 'c-')
-# 		#self.costmap = self.ax1.pcolormesh(np.ones((10,10)))
-		
-# 		self.redraw()
-		
-# 	def redraw(self):
-# 		#Need both of these in order to rescale
-# 		self.ax0.relim()
-# 		self.ax0.autoscale_view()
-		
-# 		self.ax1.relim()
-# 		self.ax1.autoscale_view()
-		
-# 		#We need to draw *and* flush
-# 		self.fig.canvas.draw()
-# 		self.fig.canvas.flush_events()
-		
-# 	def update_scan(self, scan_data):
-# 		laser_angles = np.linspace(scan_data.angle_min, scan_data.angle_max, math.ceil((scan_data.angle_max - scan_data.angle_min) / scan_data.angle_increment))
-
-
-# 		self.laser_scanner.set_data(laser_angles, scan_data.ranges)
-# 		pass
-
-# 	def update_image(self, img_data):
-# 		pass
+from cone_follower.msg import PolarPoints, PolarPoint
 
 class DynamicPlot():
 
@@ -116,8 +63,6 @@ class DynamicPlot():
 		self.fig.canvas.draw()
 		self.fig.canvas.flush_events()
 
-
-
 CH = CoordinateHelpers()
 
 class CoordPlayground():
@@ -129,16 +74,18 @@ class CoordPlayground():
 
 		self.img_sub = rospy.Subscriber('/camera/zed/rgb/image_rect_color', Image, self.img_callback)
 		self.scan_sub = rospy.Subscriber('/scan', numpy_msg(LaserScan), self.scan_callback)
+		self.keypoint_sub = rospy.Subscriber('/cone/key_points', numpy_msg(PolarPoints), self.keypoint_callback)
 
 		self.scan = None
 		self.img = None
+		self.keypoints = None
 
 		self.first_laser_recieved = False 
 
 		self.last_process = time.clock()
 
 		self.bridge = CvBridge()
-		# self.viz = Visualization()
+
 		self.viz = DynamicPlot()
 		self.viz.initialize()
 
@@ -148,81 +95,79 @@ class CoordPlayground():
 				rospy.sleep(0.1)
 
 	def img_callback(self, data):
-		# print("got image")
-
-		if self.scan:
-			self.process(self.scan, data)
+		if self.scan and self.keypoints:
+			self.process(self.scan, data, self.keypoints)
 			self.scan = None
 			self.img = None
+			self.keypoints = None
 		else:
 			self.img = data
 
 	def scan_callback(self, data):
-		# print("got scan")
-
-		if self.img:
-			self.process(data, self.img)
+		if self.img and self.keypoints:
+			self.process(data, self.img, self.keypoints)
 			self.scan = None
 			self.img = None
+			self.keypoints = None
 		else:
-			self.scan = data
-		
+			if self.scan == None:
+				self.scan = data
+	
+	def keypoint_callback(self, data):
+		if self.img and self.scan:
+			self.process(self.scan, self.img, data)
+			self.scan = None
+			self.img = None
+			self.keypoints = None
+		else:
+			if self.keypoints == None:
+				self.keypoints = data
+			# self.keypoints = data
+
 	def ros_to_cvimg(self, rosimg):
 		ENC_GRAYSCALE = "mono8"
 		ENC_COLOR = "bgr8"
 		# return self.bridge.toCvShare(rosimg, ENC_GRAYSCALE)
 		return self.bridge.imgmsg_to_cv2(rosimg, desired_encoding=ENC_COLOR)
 
-	def process(self, scan, image):
-		if time.clock() - self.last_process > 0.01:
+	def process(self, scan, image, keypoints):
+		if time.clock() - self.last_process > 0.01 and scan and image and keypoints:
+			# print (keypoints)
 			self.last_process = time.clock()
 			
-
-
 			self.laser_angles = np.linspace(scan.angle_min, scan.angle_max, math.ceil((scan.angle_max - scan.angle_min) / scan.angle_increment))
 			self.laser_ranges = scan.ranges
 
 			self.laser_x, self.laser_y = CH.polar_to_euclid(self.laser_angles, self.laser_ranges)
-
-			
+			# self.keypoints = 
 
 			self.image = self.ros_to_cvimg(image)
 
+			for keypoint in keypoints.points:
+				image_x, image_y = CH.keypoint_to_image(keypoint.angle, keypoint.distance)
+				height, width, depth = self.image.shape
+
+				if (image_x >= 0 and image_x < width and \
+					image_y >= 0 and image_y < height):
+					# print(keypoint, image_x, image_y)
+					cv2.circle(self.image, (image_x, image_y), 10, (255,0,0), 10)
+
+
 			self.first_laser_recieved = True
 
-			# print (self.image)
-
-			# self.viz.laser_angular.set_data(self.laser_angles, self.laser_ranges)
-			# self.viz.update_scan(scan)
-			# self.viz.update_image(image)
-
-			# self.viz.redraw()
-
-			print ("processing scan and image")
-		
 	def loop(self):
 		# update visualization 
 		if self.SHOW_VIS and self.first_laser_recieved:
 
 			self.viz.laser_angular.set_data(self.laser_angles, self.laser_ranges)
+			# self.viz.laser_maxima.set_data(self.laser_angles, self.laser_ranges)
 			self.viz.laser_euclid.set_data(self.laser_x, self.laser_y)
 			self.viz.ax2.imshow(self.image)
 			
 			self.viz.redraw()
 
 if __name__ == '__main__':
-# 	-0.35	0.95
-# -0.42	0.95
-# 0.125	1.9
-# 0.073	1.92
-# 0.05	0.72
-# -0.032	0.71
 
-	# print(CH.keypoint_to_image(-.35, .95))
 	print(CH.keypoint_to_image(0, .5))
 	cp = CoordPlayground()
-	# ch = CoordinateHelpers()
-	# print (ch.laser_to_rgb_euclid(0,0,0))
-	# print ("test")
 
-	# rospy.spin()

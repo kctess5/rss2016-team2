@@ -22,9 +22,9 @@ class KeyPointsDetector(object):
 		self.pub_viz = rospy.Publisher('/cone/key_points_viz', Marker, queue_size=10)
 
                 # Configuration
-		self.filter_width = 21
-		self.max_distance = 2.5 #meters
-		self.max_angle = math.pi/2 #rad
+		self.filter_width = 11
+		self.max_distance = 3.5 #meters
+		self.max_angle = math.pi/3 #rad
 
 		rospy.spin()
 
