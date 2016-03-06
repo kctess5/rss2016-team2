@@ -48,8 +48,8 @@ class KeyPointsDetector(object):
                 marker.action = Marker.ADD
                 marker.color.b = 1.
                 marker.color.a = 1.
-                marker.scale.x = 0.2
-                marker.scale.y = 0.2
+                marker.scale.x = 0.1
+                marker.scale.y = 0.1
                 marker.points = [self.make_point(angle, distance) for angle, distance in array]
                 self.pub_viz.publish(marker)
 
@@ -78,9 +78,23 @@ class KeyPointsDetector(object):
 
                 # Collapse blocks of same-distance points to a single point
                 # To make local-minima detection easy
+                start_angle = None
                 for ((aa, da), (ab, db)) in zip(all_distances_in_range, all_distances_in_range[1:]):
-                        if abs(da - db) > 0.00001:
-                                output.append((aa, da))
+                        if abs(da - db) < 0.00001:
+                                # Points are basically the same
+                                if start_angle == None:
+                                        # Record this as the start_angle
+                                        start_angle = aa
+                        else:
+                                # Points are different enough for their own entry
+                                if start_angle == None:
+                                        # We aren't bunching points together
+                                        output.append((aa, da))
+                                else:
+                                        angle = (start_angle + aa)/2.
+                                        output.append((angle, da))
+                                        start_angle = None
+
                 output.append(all_distances_in_range[-1])
 
                 return output
