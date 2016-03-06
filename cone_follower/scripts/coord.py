@@ -2,10 +2,11 @@
 from __future__ import print_function
 import rospy
 from geometry_msgs.msg import Quaternion
-from car_controller.helpers import CoordinateHelpers
+from car_controller.helpers import CoordinateHelpers, ColorThief
 import cv2
 from cv_bridge import CvBridge, CvBridgeError
 import numpy as np
+from scipy import misc
 from sensor_msgs.msg import Image
 from sensor_msgs.msg import LaserScan
 from rospy.numpy_msg import numpy_msg
@@ -65,6 +66,12 @@ class DynamicPlot():
 
 CH = CoordinateHelpers()
 
+def dist(p1, p2):
+	d = 0
+	for i in xrange(0,len(p1)):
+		d = d + (p1[i] - p2[i]) * (p1[i] - p2[i])
+	return math.sqrt(d)
+
 class CoordPlayground():
 	""" A place to test coordinate system related things """
 	def __init__(self):
@@ -79,6 +86,10 @@ class CoordPlayground():
 		self.scan = None
 		self.img = None
 		self.keypoints = None
+
+		self.CONE_COLOR = (4,20,200)
+		self.COLOR_DISTANCE_CUTTOFF = 50
+		self.CONE_PERCENTAGE_CUTTOFF = .18
 
 		self.first_laser_recieved = False 
 
@@ -122,7 +133,6 @@ class CoordPlayground():
 		else:
 			if self.keypoints == None:
 				self.keypoints = data
-			# self.keypoints = data
 
 	def ros_to_cvimg(self, rosimg):
 		ENC_GRAYSCALE = "mono8"
@@ -130,28 +140,74 @@ class CoordPlayground():
 		# return self.bridge.toCvShare(rosimg, ENC_GRAYSCALE)
 		return self.bridge.imgmsg_to_cv2(rosimg, desired_encoding=ENC_COLOR)
 
+	def cone_in_roi(self, roi, quality=2):
+		width, height, depth = roi.shape
+		dists = []
+		num_pixels = float(width) * float(height) / float(quality * quality)
+			
+		cone_pixels = 0
+
+		for x in xrange(0, width, quality):
+			for y in xrange(0, height, quality):
+				data = roi[x, y]
+				r, g, b = int(data[0]), int(data[1]), int(data[2])
+				d = dist([r,g,b], self.CONE_COLOR)
+
+				if (d < self.COLOR_DISTANCE_CUTTOFF):
+					cone_pixels += 1
+
+		return (float(cone_pixels) / num_pixels) > self.CONE_PERCENTAGE_CUTTOFF
+
 	def process(self, scan, image, keypoints):
 		if time.clock() - self.last_process > 0.01 and scan and image and keypoints:
-			# print (keypoints)
 			self.last_process = time.clock()
-			
+
 			self.laser_angles = np.linspace(scan.angle_min, scan.angle_max, math.ceil((scan.angle_max - scan.angle_min) / scan.angle_increment))
 			self.laser_ranges = scan.ranges
 
 			self.laser_x, self.laser_y = CH.polar_to_euclid(self.laser_angles, self.laser_ranges)
-			# self.keypoints = 
-
 			self.image = self.ros_to_cvimg(image)
+
+			cones = []
 
 			for keypoint in keypoints.points:
 				image_x, image_y = CH.keypoint_to_image(keypoint.angle, keypoint.distance)
+
 				height, width, depth = self.image.shape
 
-				if (image_x >= 0 and image_x < width and \
-					image_y >= 0 and image_y < height):
-					# print(keypoint, image_x, image_y)
-					cv2.circle(self.image, (image_x, image_y), 10, (255,0,0), 10)
+				if (image_x >= 50 and image_x < width - 50 and \
+					image_y >= 50 and image_y < height - 50):
 
+					ROIheight = 90 / keypoint.distance
+					ROIwidth = 90 / keypoint.distance
+
+					ROI = self.image[image_y-ROIheight:image_y+ROIheight, image_x-ROIwidth:image_x+ROIwidth, 0:3]
+
+					if self.cone_in_roi(ROI):
+						# small_img = misc.imresize(ROI, (50,50))
+						cones.append((image_x, image_y, keypoint))
+						cv2.circle(self.image, (image_x, image_y), 10, (255,0,0), 20)
+					else:
+						cv2.circle(self.image, (image_x, image_y), 10, (0,255,0), 10)
+
+			# for image_x, image_y, keypoint in cones:
+				# pass
+				# cv2.circle(self.image, (image_x, image_y), 10, (255,0,0), 20)
+
+			# cone_rois = []
+			# if len(ROIs):
+			# 	for i in xrange(0,len(ROIs)):
+			# 		if self.cone_in_roi(ROIs[i]):
+			# 			small_img = misc.imresize(ROIs[i], (50,50))
+			# 			cone_rois.append(small_img)
+
+			# if len(cone_rois):
+			# 	img = np.zeros((50 * len(cone_rois), 50, 3), dtype=np.uint8)
+
+			# 	for i in xrange(0,len(cone_rois)):
+			# 		img[i*50:i*50+50, 0:50, 0:3] = cone_rois[i]
+
+			# self.image = image
 
 			self.first_laser_recieved = True
 
@@ -160,7 +216,6 @@ class CoordPlayground():
 		if self.SHOW_VIS and self.first_laser_recieved:
 
 			self.viz.laser_angular.set_data(self.laser_angles, self.laser_ranges)
-			# self.viz.laser_maxima.set_data(self.laser_angles, self.laser_ranges)
 			self.viz.laser_euclid.set_data(self.laser_x, self.laser_y)
 			self.viz.ax2.imshow(self.image)
 			
