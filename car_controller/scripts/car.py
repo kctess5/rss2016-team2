@@ -52,7 +52,7 @@ class LLDriver(object):
 
 	def toggle_enabled(self):
 		self.enabled = not self.enabled
-		rospy.loginfo("Toggling low level driver: %s  enabled: %r", self.__class__.__name__, enabled)
+		rospy.loginfo("Toggling low level driver: %s  enabled: %r", self.__class__.__name__, self.enabled)
 
 	def set_speed(self, speed):
 		self.motor_speed = speed
@@ -73,7 +73,7 @@ class LLMotor(LLDriver):
 	def __init__(self, *args, **kwargs):
 		super(LLMotor, self).__init__(*args, **kwargs)
 
-		self.motor_cmd_pub = rospy.Publisher("vesc/ackermann_cmd", AckermannDriveStamped, queue_size=10)
+		self.motor_cmd_pub = rospy.Publisher("/vesc/ackermann_cmd_mux/input/navigation", AckermannDriveStamped, queue_size=10)
 
 	def publish_drive_command(self, speed=-999, steering_angle=-999, \
 		acceleration=0, jerk=0, steering_angle_velocity=0):
@@ -171,7 +171,7 @@ class Car(object):
 		self.joy_sub = rospy.Subscriber("vesc/joy", Joy, self.joyCallback)
 		self.control_sub = rospy.Subscriber("/car/high_control", HighControl, self.controlCallback)
 
-		self.enabled = True
+		self.enabled = False
 		self.last_toggle = time.clock()
 
 		# keep track of all of the various high level modules that are contributing
@@ -196,17 +196,18 @@ class Car(object):
 	def joyCallback(self, joy_msg):
 		# toggle the the active state of the low level motor driver
 
-		if time.clock() - self.last_toggle > 0.15: # debounce controller buttons
+		if time.clock() - self.last_toggle > 0.01 and sum(joy_msg.buttons): # debounce controller buttons
+		# if sum(joy_msg.buttons): # debounce controller buttons
 
 			if joy_msg.buttons[Y_BUTTON] == 1:
 				rospy.loginfo("Toggling module: %s", self.getActiveModule())
 				self.llDriver.toggle_enabled()
 				
-			if joy_msg.buttons[X_BUTTON] == 1:
+			if joy_msg.buttons[X_BUTTON] == 1 and len(self.modules):
 				self.active_module = (self.active_module + 1) % len(self.modules)
 				rospy.loginfo("Set active module: %s", self.getActiveModule())
 
-			if joy_msg.buttons[B_BUTTON] == 1:
+			if joy_msg.buttons[B_BUTTON] == 1 and len(self.modules):
 				self.active_module = (self.active_module - 1) % len(self.modules)
 				rospy.loginfo("Set active module: %s", self.getActiveModule())
 
@@ -216,7 +217,7 @@ class Car(object):
 			self.last_toggle = time.clock()
 
 	def controlCallback(self, control_msg):
-		if (control_msg.subscribe):
+		if (control_msg.subscribe or not control_msg.module in self.modules):
 			self.subscribe(control_msg)
 
 		# pass the message through to the correct controller

@@ -18,8 +18,8 @@ def distance_at(angle, data):
 
 class WallFollower(ControlModule):
 	def __init__(self, simulate=False, follow=LEFT):
-		# initialize control module with name "test_module"
-		super(WallFollower, self).__init__("test_module")
+		# initialize control module with name "wall_follower"
+		super(WallFollower, self).__init__("wall_follower")
 
 		self.follow = follow
 		self.simulate = simulate
@@ -107,7 +107,13 @@ import os
 TURN_DIR = RIGHT
 
 if __name__ == '__main__':
-	wf = WallFollower(True, RIGHT)
+	wf = None
+	if os.environ['ROS_ENV'] == 'simulation':
+		print("Simulation environment")
+		wf = WallFollower(True, TURN_DIR)
+	elif os.environ['ROS_ENV'] == 'racecar':
+		print("Racecar environment")
+		wf = WallFollower(False, TURN_DIR)
 
 	def kill():
 		print ("unsubscribe")
