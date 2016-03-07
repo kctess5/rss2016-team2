@@ -14,6 +14,7 @@ from rospy.numpy_msg import numpy_msg
 import time
 import matplotlib.pyplot as plt
 import math
+import message_filters
 from cone_follower.msg import PolarPoints, PolarPoint
 
 class DynamicPlot():
@@ -90,13 +91,12 @@ class ConeFollower(ControlModule):
 
 		self.node = rospy.init_node('cone_weaver', anonymous=True)
 
-		self.img_sub = rospy.Subscriber('/camera/zed/rgb/image_rect_color', Image, self.img_callback)
-		self.scan_sub = rospy.Subscriber('/scan', numpy_msg(LaserScan), self.scan_callback)
-		self.keypoint_sub = rospy.Subscriber('/cone/key_points', numpy_msg(PolarPoints), self.keypoint_callback)
+		img_sub = message_filters.Subscriber('/camera/zed/rgb/image_rect_color', Image)
+		scan_sub = message_filters.Subscriber('/scan', numpy_msg(LaserScan))
+		keypoint_sub = message_filters.Subscriber('/cone/key_points', numpy_msg(PolarPoints))
+                self.sync = message_filters.TimeSynchronizer([scan_sub, image_sub, keypoint_sub], 10)
+                self.sync.registerCallback(self.process)
 
-		self.scan = None
-		self.img = None
-		self.keypoints = None
 		self.first_laser_recieved = False 
 		self.last_process = time.clock()
 
@@ -115,35 +115,6 @@ class ConeFollower(ControlModule):
 			while not rospy.is_shutdown():
 				self.loop()
 				rospy.sleep(0.1)
-
-	def img_callback(self, data):
-		if self.scan and self.keypoints:
-			self.process(self.scan, data, self.keypoints)
-			self.scan = None
-			self.img = None
-			self.keypoints = None
-		else:
-			self.img = data
-
-	def scan_callback(self, data):
-		if self.img and self.keypoints:
-			self.process(data, self.img, self.keypoints)
-			self.scan = None
-			self.img = None
-			self.keypoints = None
-		else:
-			if self.scan == None:
-				self.scan = data
-	
-	def keypoint_callback(self, data):
-		if self.img and self.scan:
-			self.process(self.scan, self.img, data)
-			self.scan = None
-			self.img = None
-			self.keypoints = None
-		else:
-			if self.keypoints == None:
-				self.keypoints = data
 
 	def ros_to_cvimg(self, rosimg):
 		ENC_GRAYSCALE = "mono8"
