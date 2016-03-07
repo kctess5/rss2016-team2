@@ -179,6 +179,7 @@ class Car(object):
 		self.modules = []
 
 		if env == 'simulation':
+			self.enabled = True
 			self.llDriver = LLSimulator(self.enabled)
 		elif env == 'racecar':
 			self.llDriver = LLMotor(self.enabled)
