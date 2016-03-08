@@ -1,0 +1,5 @@
+<launch>
+	<param name="/car/environment" value="$(optenv ROS_ENV simulation)"/>
+	<include file="$(find racecar)/launch/teleop.launch" />
+	<node name="car" pkg="car_controller" type="car.py" output="screen" />
+</launch>
