@@ -136,6 +136,9 @@ class ConeFollower(ControlModule):
 		width, height, depth = roi.shape
 		dists = []
 		num_pixels = float(width) * float(height) / float(quality * quality)
+
+		if num_pixels == 0:
+			return 0
 			
 		cone_pixels = 0
 
