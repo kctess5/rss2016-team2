@@ -56,6 +56,7 @@ class KeyPointsDetector(object):
 
         def publish_1d_array(self, array, header):
                 data = PolarPoints()
+                data.header = header
                 data.points = [PolarPoint(angle=angle, distance=distance) for angle, distance in array]
                 self.pub.publish(data)
 
