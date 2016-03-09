@@ -70,6 +70,7 @@ CH = CoordinateHelpers()
 
 RIGHT = 1
 LEFT = 2
+CENTER = 3
 
 def dist(p1, p2):
 	d = 0
@@ -84,38 +85,42 @@ def distance_at(angle, data):
 
 class ConeFollower(ControlModule):
 	""" The controller for lab 4B - weave between cones """
-	def __init__(self, visualize=False):
+	def __init__(self, turn_dir=RIGHT, visualize=False):
 		super(ConeFollower, self).__init__("cone_weaver")
 
 		self.SHOW_VIS = visualize
 
 		self.node = rospy.init_node('cone_weaver', anonymous=True)
 
-		image_sub = message_filters.Subscriber('/camera/zed/rgb/image_rect_color', Image)
+		image_sub = message_filters.Subscriber('/camera/rgb/image_rect_color', Image)
 		scan_sub = message_filters.Subscriber('/scan', numpy_msg(LaserScan))
 		keypoint_sub = message_filters.Subscriber('/cone/key_points', numpy_msg(PolarPoints))
 		
-		self.sync = message_filters.ApproximateTimeSynchronizer([scan_sub, image_sub, keypoint_sub], 10, 0.05)
+		self.sync = message_filters.ApproximateTimeSynchronizer([scan_sub, image_sub, keypoint_sub], 1, 0.08)
 		# self.sync = message_filters.TimeSynchronizer([image_sub], 1000)
 		self.sync.registerCallback(self.process)
 
 		self.first_laser_recieved = False 
 		self.last_cone_position = (0,0)
 		self.last_process = time.clock()
-
+		self.last_steering_angle = 0
 		self.CONE_DIST = 0.4 # desired cone distance on each side (meters)
-		self.turn_direction = RIGHT # initial side of the cone to target
+		self.turn_direction = turn_dir # initial side of the cone to target
 
 		# if consecutative cone positions are greater than this distance apart, they are 
 		# considered to be different cones, and the turn direction is flipped to snake 
 		# between the cones
 		self.CONE_FLIP_DISTANCE = 0.8
+		self.last_cone_flip = time.clock()
 
-		self.CONE_COLOR = (4,20,200)
-		self.COLOR_DISTANCE_CUTTOFF = 80
+		self.CONE_COLOR = (10, 60, 175)
+		# self.CONE_COLOR = (60, 100, 120)
+		self.COLOR_DISTANCE_CUTTOFF = 50
 		self.CONE_PERCENTAGE_CUTTOFF = .18
 		self.CAR_WHEELBASE = 0.33 # (meters)
-		self.CAR_DRIVE_SPEED = 0.5
+		self.CAR_DRIVE_SPEED = .4
+		self.STRAIGHT_TIME = .5
+		self.STOPPING_DISTANCE = 0.75
 
 		self.bridge = CvBridge()
 		
@@ -142,6 +147,10 @@ class ConeFollower(ControlModule):
 			
 		cone_pixels = 0
 
+		main_r = 0
+		main_g = 0
+		main_b = 0
+
 		for x in xrange(0, width, quality):
 			for y in xrange(0, height, quality):
 				data = roi[x, y]
@@ -149,7 +158,13 @@ class ConeFollower(ControlModule):
 				d = dist([r,g,b], self.CONE_COLOR)
 
 				if (d < self.COLOR_DISTANCE_CUTTOFF):
+					main_r = r + main_r
+					main_b = b + main_b
+					main_g = g + main_g
 					cone_pixels += 1
+		
+		if (cone_pixels and (float(cone_pixels) / num_pixels) > self.CONE_PERCENTAGE_CUTTOFF):
+			print((main_r) / cone_pixels, (main_g) / cone_pixels, (main_b) / cone_pixels)
 
 		return (float(cone_pixels) / num_pixels) > self.CONE_PERCENTAGE_CUTTOFF
 
@@ -191,7 +206,8 @@ class ConeFollower(ControlModule):
 			if len(cones):
 				cone_position = CH.polar_to_euclid(cones[0][2].angle, cones[0][2].distance)
 
-				if (dist(cone_position, self.last_cone_position)) > self.CONE_FLIP_DISTANCE:
+				if (dist(cone_position, self.last_cone_position)) > self.CONE_FLIP_DISTANCE \
+					and not self.turn_direction == CENTER:
 					self.flip_cone_direction()
 
 				self.last_cone_position = cone_position
@@ -199,7 +215,7 @@ class ConeFollower(ControlModule):
 				self.drive_to(cones[0], self.turn_direction)
 			else:
 				self.drive_to(None)
-			print (cones)
+			print ("found: ", len(cones), "cones")
 
 			self.first_laser_recieved = True
 			# cones.sort(key=lambda cone: cone[2].distance)
@@ -218,17 +234,26 @@ class ConeFollower(ControlModule):
 		elif self.turn_direction == LEFT:
 			self.turn_direction = RIGHT
 
+		self.last_cone_flip = time.clock()
+
 	def find_steer_goal(self, cone, side):
 		cone_theta = cone[2].angle
 		cone_d = cone[2].distance
 
 		if side == RIGHT:
-			sign = 1
+			dist = np.sqrt(cone_d * cone_d + (1 * self.CONE_DIST + 0.12) * self.CONE_DIST)
+			theta = cone_theta - np.arcsin((1 * self.CONE_DIST + 0.12) / dist)
+			# sign = 1
 		elif side == LEFT:
-			sign = -1
+			dist = np.sqrt(cone_d * cone_d + -1 * self.CONE_DIST * self.CONE_DIST)
+			theta = cone_theta - np.arcsin(-1 * self.CONE_DIST / dist)
+			# sign = -1
+		elif side == CENTER:
+			dist = cone_d
+			theta = cone_theta
 		
-		dist = np.sqrt(cone_d * cone_d + sign * self.CONE_DIST * self.CONE_DIST)
-		theta = cone_theta - np.arcsin(sign * self.CONE_DIST / dist)
+		# dist = np.sqrt(cone_d * cone_d + sign * self.CONE_DIST * self.CONE_DIST)
+		# theta = cone_theta - np.arcsin(sign * self.CONE_DIST / dist)
 
 		return (theta, dist)
 
@@ -240,14 +265,28 @@ class ConeFollower(ControlModule):
 		control_msg = self.make_message("direct_drive")
 
 		control_msg.drive_msg.speed = 0
-		control_msg.drive_msg.steering_angle = 0
 
 		if cone == None:
+			self.last_steering_angle = 0
 			self.control_pub.publish(control_msg)
 			return
 
 		control_msg.drive_msg.speed = self.CAR_DRIVE_SPEED
+
+		if time.clock() - self.last_cone_flip < self.STRAIGHT_TIME:
+			print ("GOING STRAIGHT")
+			control_msg.drive_msg.steering_angle = 0
+			self.control_pub.publish(control_msg)
+			return
+
+		if side == CENTER and cone[2].distance < self.STOPPING_DISTANCE:
+			control_msg.drive_msg.speed = 0
+			control_msg.drive_msg.steering_angle = 0
+			self.control_pub.publish(control_msg)
+			return
+
 		control_msg.drive_msg.steering_angle = self.find_steer_actuation(*self.find_steer_goal(cone, side))
+		self.last_steering_angle = control_msg.drive_msg.steering_angle
 
 		self.control_pub.publish(control_msg)
 
@@ -262,7 +301,7 @@ class ConeFollower(ControlModule):
 			self.viz.redraw()
 
 if __name__ == '__main__':
-	cf = ConeFollower(True)
+	cf = ConeFollower(CENTER)
 	def kill():
 		print("unsubscribe")
 		cf.unsubscribe()
