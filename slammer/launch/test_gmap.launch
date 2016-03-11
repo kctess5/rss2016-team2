@@ -13,13 +13,14 @@
   <!-- Run the slam_gmapping alg real fast. -->
   <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping"
         args="scan:=/scan_clipped">
-    <param name="~scan" value="foobar" />
     <param name="~map_update_interval" value="0.1" />
     <param name="~xmin" value="-$(arg mapradius)" />
     <param name="~ymin" value="-$(arg mapradius)" />
     <param name="~xmax" value="$(arg mapradius)" />
     <param name="~ymax" value="$(arg mapradius)" />
     <param name="~delta" value="0.06" />
+    <param name="~particles" value="15" />
+    <param name="~minimumScore" value="50" />
   </node>
 
 </launch>
