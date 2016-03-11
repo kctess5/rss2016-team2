@@ -1,0 +1,9 @@
+<launch>
+  <!-- Playback from a rosbag. Note this does not loop. -->
+  <node pkg="rosbag" type="play" name="play"
+        args="$(env HOME)/bags/2016-03-10-02-41-07-lasercorner-ntf.orig.bag" />
+
+  <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping">
+    <param name="~map_update_interval" value="0.05" />
+  </node>
+</launch>
