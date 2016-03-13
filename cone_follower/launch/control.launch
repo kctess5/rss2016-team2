@@ -1,0 +1,6 @@
+<launch>
+	<param name="/car/environment" value="$(optenv ROS_ENV simulation)"/>
+	<include file="$(find zed_wrapper)/launch/zed_depth.launch" />
+	<node name="key_points_detector" pkg="cone_follower" type="key_points_detector.py" />
+	<node name="cone_weaver" pkg="cone_follower" type="follow.py" />
+</launch>
