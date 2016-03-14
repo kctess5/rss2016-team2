@@ -1,11 +1,20 @@
 #!/usr/bin/env python
+"""
+Localizer node finds the robot's location in a known map given laser input.
+
+Reads the map from static_map on startup.
+
+Publishes:
+    ~particles (PoseArray)   All active particles.
+    ~guess     (PoseStamped) Best guess pose.
+"""
 
 import rospy
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Float32MultiArray
 from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Pose, PoseStamped, PoseArray
 from cone_follower.msg import PolarPoints, PolarPoint
 from rospy.numpy_msg import numpy_msg
 from nav_msgs.msg import Odometry
@@ -16,21 +25,22 @@ import numpy as np
 import random
 import collections
 
-"""
-Localizes Stuff.
-"""
 class Localizer(object):
     def __init__(self):
         rospy.loginfo("Initializing Monte Carlo Localization particle filter")
 
+        self.seq = 0
         rospy.init_node('localizer', anonymous=True)
         LASER_SCAN_TOPIC = "/scan"
         self.sub = rospy.Subscriber(LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
         self.odom = rospy.Subscriber("/vesc/odom", Odometry, self.odometry_callback)
-        self.pub = rospy.Publisher('/cone/key_points', PolarPoints, queue_size=10)
+        self.pub_particles = rospy.Publisher('~particles', PoseArray, queue_size=1)
+        self.pub_guess = rospy.Publisher('~guess', PoseStamped, queue_size=1)
 
         # 2D numpy array of occupancy floats in [0,1].
+        rospy.logdebug("Fetching map")
         self.omap = self.get_omap()
+        rospy.logdebug("Got map")
 
         # accumulated odometry delta - reset whenever the particle filter runs
         self.clear_odometry() # Delta(0,0,0)
@@ -218,7 +228,11 @@ class Localizer(object):
         self.particles = \
             self.MCL(self.omap, self.particles, self.accumulated_odometry_delta, self.last_scan)
 
+        # TODO send weights
+        self.publish_particles(self.particles, None)
+
     def MCL(self, omap, previous_particles, odometry_delta, sensors):
+        """Run one step of Monte Carlo localization."""
         rospy.logdebug("Attempting Monte Carlo Localization")
 
         # update particle positions based on odometry readings
@@ -243,6 +257,33 @@ class Localizer(object):
         new_particles = np.random.choice(particles, len(particles), True, particle_weights)
 
         return new_particles
+
+    def publish_particles(self, particles, particle_weights):
+        header = Header()
+        header.seq = self.seq
+        self.seq += 1
+        header.stamp = rospy.Time.now()
+        header.frame_id = "map"
+
+        pa = PoseArray()
+        pa.header = header
+        pa.poses = map(particle_to_pose, particles)
+        self.pub_particles.publish(pa)
+
+        # TODO need weights to get real best.
+        bestParticle = particles[0]
+        pb = PoseStamped()
+        pb.header = header
+        pb.pose = particle_to_pose(bestParticle)
+        self.pub_guess.publish(pb)
+
+def particle_to_pose(particle):
+    pose = Pose()
+    pose.position.x = particle.x
+    pose.position.y = particle.y
+    # TODO orientation
+    # pose.orientation
+    return pose
 
 Particle = collections.namedtuple("Particle", ["x", "y", "heading"])
 Delta = collections.namedtuple("Delta", ["x", "y", "heading"])
