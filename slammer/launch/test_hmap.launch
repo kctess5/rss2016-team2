@@ -1,7 +1,7 @@
 <launch>
 
   <arg name="mapradius" default="100" />
-  <arg name="bagfile" default="$(env HOME)/bags/2016-03-10-02-41-07-lasercorner-ntf.orig.bag" />
+  <arg name="bagfile" default="$(env HOME)/bags/2016-03-10-02-44-50-laserloop-ntf.orig.bag" />
 
   <!-- Playback from a rosbag. Note this does not loop. -->
   <node pkg="rosbag" type="play" name="play"
