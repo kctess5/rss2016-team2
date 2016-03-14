@@ -1,0 +1,4 @@
+<launch>
+	<param name="log_level" value="DEBUG"/>
+	<node name="localizer" pkg="localization" type="particle_filter.py" output="screen" />
+</launch>

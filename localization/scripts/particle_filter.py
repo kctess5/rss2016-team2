@@ -25,12 +25,26 @@ import numpy as np
 import random
 import collections
 
+def log_level(str_level):
+    if str_level.upper() == "DEBUG":
+        return rospy.DEBUG
+    elif str_level.upper() == "INFO":
+        return rospy.INFO
+    elif str_level.upper() == "WARN":
+        return rospy.WARN
+
+"""
+Localizes Stuff.
+"""
+
 class Localizer(object):
     def __init__(self):
+        ll = rospy.get_param('log_level')
+        rospy.init_node('localizer', anonymous=True, log_level=log_level(ll))
         rospy.loginfo("Initializing Monte Carlo Localization particle filter")
 
-        self.seq = 0
-        rospy.init_node('localizer', anonymous=True)
+        # create necessary ros channels
+
         LASER_SCAN_TOPIC = "/scan"
         self.sub = rospy.Subscriber(LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
         self.odom = rospy.Subscriber("/vesc/odom", Odometry, self.odometry_callback)
@@ -46,6 +60,7 @@ class Localizer(object):
         self.clear_odometry() # Delta(0,0,0)
         self.last_pose = None
         self.last_scan = None
+        self.seq = 0
 
         # container for the persistent particles
         self.particles = []
@@ -64,7 +79,7 @@ class Localizer(object):
         self.LOCALIZATION_FREQUENCY = 15.0
         # TODO - better initial pose management
         self.INITIAL_POSE = Particle(0,0,0)
-
+        
     def scan_callback(self, data):
         rospy.logdebug("Storing scan data")
         self.last_scan = data
