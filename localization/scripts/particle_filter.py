@@ -11,7 +11,7 @@ Publishes:
 
 import rospy
 from sensor_msgs.msg import LaserScan
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, Header
 from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, Pose, PoseStamped, PoseArray
@@ -72,15 +72,13 @@ class Localizer(object):
         self.omap = self.get_omap()
         rospy.logdebug("Got map")
 
-        
-
         rospy.Timer(rospy.Duration(1.0 / self.LOCALIZATION_FREQUENCY), self.timer_callback)
 
     def configure(self):
         # the amount of noise to add for each component of the particle state
         # increasing this variable will make the particles diverge faster
         self.RANDOMNESS = Delta(1,1,0.1)
-        self.NUM_PARTICLES = 10
+        self.NUM_PARTICLES = 100
         # number of times per second to attempt localization
         self.LOCALIZATION_FREQUENCY = 1.0
         # TODO - better initial pose management
@@ -148,7 +146,7 @@ class Localizer(object):
             particle.y + delta.y + self.RANDOMNESS.y * np.random.normal(), \
             particle.heading + delta.heading + self.RANDOMNESS.heading * np.random.normal())
 
-    def sensor_update(self, omap, measurements, particles):
+    def sensor_update(self, omap, measurement, particle):
         """Calculate weights for particles given a map and sensor data.
         Basically the likelihood of the measurement at the location.
         Args:
@@ -158,18 +156,17 @@ class Localizer(object):
         Returns:
             An array of weights for the particles.
         """
-        return [self.sensor_update_individual(omap, measurements, particle) for particle in particles]
 
-    def sensor_update_individual(self, omap, measurement, particle):
         """Whee, scan matching."""
+        return 2
         # Angles in the scan relative to the robot.
         relative_angles = (np.arange(measurement.ranges.shape[0]) * measurement.angle_increment) + measurement.angle_min
         # Angles in map space.
-        absolute_angles = particle.heading + angles
+        absolute_angles = particle.heading + relative_angles
         # Ranges observed IRL are in measurement.ranges
         # Ranges we should've observed if this particle were correct.
-        expected_ranges = [self.calc_range(omap, particle.x, particle.y, a, max_range)
-                           for a in measurement_ranges]
+        expected_ranges = [self.calc_range(omap, particle.x, particle.y, a, measurement.range_max)
+                           for a in measurement.ranges]
         weight = ((expected_ranges - measurement.ranges) ** 2).mean()
         return weight
 
@@ -263,7 +260,7 @@ class Localizer(object):
 
     def MCL(self, omap, previous_particles, odometry_delta, sensors):
         """Run one step of Monte Carlo localization."""
-        rospy.logdebug("Attempting Monte Carlo Localization")
+        rospy.loginfo("Attempting Monte Carlo Localization")
 
         # update particle positions based on odometry readings
         particles = \
@@ -273,7 +270,7 @@ class Localizer(object):
         # reset accumulated odometry
         self.clear_odometry()
 
-        print(particles)
+        # print(particles)
 
         # update particle weights according to probability of recording the given sensor readings
         particle_weights = \
@@ -283,10 +280,14 @@ class Localizer(object):
         particle_mass = sum(particle_weights)
 
         # reweight particles - normalization of probability
-        particle_weights = map(lambda x: x / particle_mass, particle_weights)
+        particle_weights = map(lambda x: float(x) / float(particle_mass), particle_weights)
+
+        # print ("particle weights:", particle_weights)
 
         # fill new_particles by sampling from the reweighted particle array with replacement
-        new_particles = np.random.choice(particles, len(particles), True, particle_weights)
+        new_particles = np.random.choice(len(particles), len(particles), True, particle_weights)
+        new_particles = map(lambda idx: particles[idx], new_particles)
+        # print(new_particles)
 
         return new_particles
 
