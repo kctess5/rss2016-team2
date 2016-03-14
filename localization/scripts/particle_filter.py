@@ -57,7 +57,7 @@ class Localizer(object):
 
         # load all configuration variables
         self.configure()
-        
+
         self.VISUALIZE = False
 
         # create necessary ros channels
@@ -78,13 +78,13 @@ class Localizer(object):
     def configure(self):
         # the amount of noise to add for each component of the particle state
         # increasing this variable will make the particles diverge faster
-        self.RANDOMNESS = Delta(1,1,0.1)
+        self.RANDOMNESS = Delta(0.1, 0.1, 0.05)
         self.NUM_PARTICLES = 100
         # number of times per second to attempt localization
         self.LOCALIZATION_FREQUENCY = 1.0
         # TODO - better initial pose management
         self.INITIAL_POSE = Particle(0,0,0)
-        
+
     def scan_callback(self, data):
         rospy.logdebug("Storing scan data")
         self.last_scan = data
@@ -130,11 +130,11 @@ class Localizer(object):
 
         # print(dir(map_msg.data))
         array_255 = np.array(map_msg.data).reshape((height, width))
-        
+
         if self.VISUALIZE:
             imgplot = plt.imshow(array_255)
             plt.show()
-        
+
         array_float = array_255.astype(np.float)
         # Set unknown cells (-1) to nan.
         array_float[array_float < 0] = np.nan
@@ -143,9 +143,21 @@ class Localizer(object):
         return array_float
 
     def motion_update(self, delta, particle):
-        return Particle(particle.x + delta.x + self.RANDOMNESS.x * np.random.normal(), \
-            particle.y + delta.y + self.RANDOMNESS.y * np.random.normal(), \
-            particle.heading + delta.heading + self.RANDOMNESS.heading * np.random.normal())
+        x, y, heading = particle
+
+        # Add delta
+        # YO comment this out to disable odometry updating.
+        x += delta.x
+        y += delta.y
+        heading += delta.heading
+
+        # Add noise
+        # YO comment this out to disable noise.
+        x += self.RANDOMNESS.x * np.random.normal()
+        y += self.RANDOMNESS.y * np.random.normal()
+        heading += self.RANDOMNESS.heading * np.random.normal()
+
+        return Particle(x, y, heading)
 
     def sensor_update(self, omap, measurement, particle):
         """Calculate weights for particles given a map and sensor data.
