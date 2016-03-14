@@ -14,12 +14,13 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Float32MultiArray, Header
 from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point, Pose, PoseStamped, PoseArray
+from geometry_msgs.msg import Point, Pose, PoseStamped, PoseArray, Quaternion
 from cone_follower.msg import PolarPoints, PolarPoint
 from rospy.numpy_msg import numpy_msg
 from nav_msgs.msg import Odometry
 from nav_msgs.srv import GetMap
 from scipy import signal
+import tf.transformations
 import math
 import numpy as np
 import random
@@ -314,8 +315,7 @@ def particle_to_pose(particle):
     pose = Pose()
     pose.position.x = particle.x
     pose.position.y = particle.y
-    # TODO orientation
-    # pose.orientation
+    pose.orientation = Quaternion(*tf.transformations.quaternion_from_euler(0, 0, particle.heading))
     return pose
 
 Particle = collections.namedtuple("Particle", ["x", "y", "heading"])
