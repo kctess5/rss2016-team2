@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="map_server" name="map_server" type="map_server" args="$(find localization)/maps/lab.map.yaml" />
+</launch>
