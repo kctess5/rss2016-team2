@@ -25,6 +25,8 @@ import numpy as np
 import random
 import collections
 
+import matplotlib.pyplot as plt
+
 def log_level(str_level):
     if str_level.upper() == "DEBUG":
         return rospy.DEBUG
@@ -43,6 +45,20 @@ class Localizer(object):
         rospy.init_node('localizer', anonymous=True, log_level=log_level(ll))
         rospy.loginfo("Initializing Monte Carlo Localization particle filter")
 
+        # accumulated odometry delta - reset whenever the particle filter runs
+        self.clear_odometry() # Delta(0,0,0)
+        self.last_pose = None
+        self.last_scan = None
+        self.seq = 0
+
+        # container for the persistent particles
+        self.particles = []
+
+        # load all configuration variables
+        self.configure()
+        
+        self.VISUALIZE = False
+
         # create necessary ros channels
 
         LASER_SCAN_TOPIC = "/scan"
@@ -56,17 +72,7 @@ class Localizer(object):
         self.omap = self.get_omap()
         rospy.logdebug("Got map")
 
-        # accumulated odometry delta - reset whenever the particle filter runs
-        self.clear_odometry() # Delta(0,0,0)
-        self.last_pose = None
-        self.last_scan = None
-        self.seq = 0
-
-        # container for the persistent particles
-        self.particles = []
-
-        # load all configuration variables
-        self.configure()
+        
 
         rospy.Timer(rospy.Duration(1.0 / self.LOCALIZATION_FREQUENCY), self.timer_callback)
 
@@ -74,9 +80,9 @@ class Localizer(object):
         # the amount of noise to add for each component of the particle state
         # increasing this variable will make the particles diverge faster
         self.RANDOMNESS = Delta(1,1,0.1)
-        self.NUM_PARTICLES = 100
+        self.NUM_PARTICLES = 10
         # number of times per second to attempt localization
-        self.LOCALIZATION_FREQUENCY = 15.0
+        self.LOCALIZATION_FREQUENCY = 1.0
         # TODO - better initial pose management
         self.INITIAL_POSE = Particle(0,0,0)
         
@@ -100,7 +106,7 @@ class Localizer(object):
 
         # store deltas
         aod = self.accumulated_odometry_delta
-        self.accumulated_odometry_delta = (x_d + aod.x, y_d + aod.y, heading_d + aod.heading)
+        self.accumulated_odometry_delta = Delta(x_d + aod.x, y_d + aod.y, heading_d + aod.heading)
 
         # store this pose message for future use
         self.last_pose = data.pose.pose
@@ -119,9 +125,17 @@ class Localizer(object):
         """
         map_service_name = rospy.get_param("~static_map", "static_map")
         rospy.wait_for_service(map_service_name)
-        map_msg = rospy.ServiceProxy(map_service_name, GetMap)()
+        map_msg = rospy.ServiceProxy(map_service_name, GetMap)().map
+
         width, height = map_msg.info.width, map_msg.info.height
-        array_255 = map_msg.data.reshape((height, width))
+
+        # print(dir(map_msg.data))
+        array_255 = np.array(map_msg.data).reshape((height, width))
+        
+        if self.VISUALIZE:
+            imgplot = plt.imshow(array_255)
+            plt.show()
+        
         array_float = array_255.astype(np.float)
         # Set unknown cells (-1) to nan.
         array_float[array_float < 0] = np.nan
@@ -144,12 +158,12 @@ class Localizer(object):
         Returns:
             An array of weights for the particles.
         """
-        return [self.sensor_update_individual(omap, sensors, particle) for particle in particles]
+        return [self.sensor_update_individual(omap, measurements, particle) for particle in particles]
 
     def sensor_update_individual(self, omap, measurement, particle):
         """Whee, scan matching."""
         # Angles in the scan relative to the robot.
-        relative_angles = (np.arange(msg.ranges.shape[0]) * msg.angle_increment) + msg.angle_min
+        relative_angles = (np.arange(measurement.ranges.shape[0]) * measurement.angle_increment) + measurement.angle_min
         # Angles in map space.
         absolute_angles = particle.heading + angles
         # Ranges observed IRL are in measurement.ranges
@@ -232,6 +246,7 @@ class Localizer(object):
         self.particles.append(self.INITIAL_POSE)
 
     def timer_callback(self, event):
+        rospy.logdebug("Stepping particle filter")
         # initialize particles if necessary
         while len(self.particles) < self.NUM_PARTICLES:
             self.init_particle()
@@ -257,6 +272,8 @@ class Localizer(object):
 
         # reset accumulated odometry
         self.clear_odometry()
+
+        print(particles)
 
         # update particle weights according to probability of recording the given sensor readings
         particle_weights = \
