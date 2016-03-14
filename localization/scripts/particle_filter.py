@@ -87,13 +87,21 @@ class Localizer(object):
     def get_omap(self):
         """Get the map from the map service and return it as a numpy array.
         This blocks until the map service is available.
+        The _received_ map has cells which are probabilities in [0,100] with unknown as -1.
+        The output map is a 2d numpy array of floats where:
+        - [0, 1]: Probability of cell being filled.
+        - np.nan: Unknown cell.
         """
         map_service_name = rospy.get_param("~static_map", "static_map")
         rospy.wait_for_service(map_service_name)
         map_msg = rospy.ServiceProxy(map_service_name, GetMap)()
         width, height = map_msg.info.width, map_msg.info.height
         array_255 = map_msg.data.reshape((height, width))
-        array_float = array_255.astype(float) / 255.
+        array_float = array_255.astype(np.float)
+        # Set unknown cells (-1) to nan.
+        array_float[array_float < 0] = np.nan
+        # Divide [0,100] into [0,1]
+        array_float /= 100.
         return array_float
 
     def motion_update(self, delta, particle):
@@ -134,6 +142,8 @@ class Localizer(object):
         Copied from https://bitbucket.org/alexbuyval/ardroneum
         """
         robot_x, robot_y, robot_a = x, y, heading
+        # Threshold value. Above this probability, the cell is expected filled.
+        filled_threshold = 0.5
 
         def is_valid(y, x):
             return (0 <= y < omap.shape[0] and
@@ -181,11 +191,11 @@ class Localizer(object):
             # if steep:
             if not steep:
                 if is_valid(y, x):
-                    if omap[y][x]:
+                    if omap[y][x] > filled_threshold:
                         return (math.sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0)) / scale)
             else:
                 if is_valid(x, y):
-                    if omap[x][y]:
+                    if omap[x][y] > filled_threshold:
                         return (math.sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0)) / scale)
 
         return max_range
