@@ -54,6 +54,7 @@ class Localizer(object):
 
         # container for the persistent particles
         self.particles = []
+        self.particle_weights = []
 
         # load all configuration variables
         self.configure()
@@ -152,7 +153,7 @@ class Localizer(object):
         heading += delta.heading
 
         # Add noise
-        # YO comment this out to disable noise.
+        YO comment this out to disable noise.
         x += self.RANDOMNESS.x * np.random.normal()
         y += self.RANDOMNESS.y * np.random.normal()
         heading += self.RANDOMNESS.heading * np.random.normal()
@@ -254,6 +255,7 @@ class Localizer(object):
             self.INITIAL_POSE.x, self.INITIAL_POSE.y, self.INITIAL_POSE.heading)
 
         self.particles.append(self.INITIAL_POSE)
+        self.particle_weights.append(0.)
 
     def timer_callback(self, event):
         rospy.logdebug("Stepping particle filter")
@@ -265,11 +267,11 @@ class Localizer(object):
         if self.last_scan == None:
             return
 
-        self.particles = \
-            self.MCL(self.omap, self.particles, self.accumulated_odometry_delta, self.last_scan)
+        # update particles and weights
+        self.particles, self.particle_weights = self.MCL(
+            self.omap, self.particles, self.accumulated_odometry_delta, self.last_scan)
 
-        # TODO send weights
-        self.publish_particles(self.particles, None)
+        self.publish_particles(self.particles, self.particle_weights)
 
     def MCL(self, omap, previous_particles, odometry_delta, sensors):
         """Run one step of Monte Carlo localization."""
@@ -298,11 +300,12 @@ class Localizer(object):
         # print ("particle weights:", particle_weights)
 
         # fill new_particles by sampling from the reweighted particle array with replacement
-        new_particles = np.random.choice(len(particles), len(particles), True, particle_weights)
-        new_particles = map(lambda idx: particles[idx], new_particles)
+        new_particles_indices = np.random.choice(len(particles), len(particles), True, particle_weights)
+        new_particles = map(lambda idx: particles[idx], new_particles_indices)
+        new_weights   = map(lambda idx: particle_weights[idx], new_particles_indices)
         # print(new_particles)
 
-        return new_particles
+        return new_particles, new_weights
 
     def publish_particles(self, particles, particle_weights):
         header = Header()
