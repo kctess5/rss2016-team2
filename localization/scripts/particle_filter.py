@@ -153,7 +153,7 @@ class Localizer(object):
         heading += delta.heading
 
         # Add noise
-        YO comment this out to disable noise.
+        # YO comment this out to disable noise.
         x += self.RANDOMNESS.x * np.random.normal()
         y += self.RANDOMNESS.y * np.random.normal()
         heading += self.RANDOMNESS.heading * np.random.normal()
