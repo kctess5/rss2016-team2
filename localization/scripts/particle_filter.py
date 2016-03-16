@@ -36,6 +36,25 @@ def log_level(str_level):
     elif str_level.upper() == "WARN":
         return rospy.WARN
 
+
+'''
+TODOs:
+- publish best particle
+- publish necessary transforms based off the best particle
+    map to odom
+    odom to base_link is published by the odometer
+        when we publish map to odom we should first subtract the odom to base link transform
+        so that the odometer transform gives us the correct car position between localization
+- publish synthetic laser scan data for visualization purposes
+    publish in frame of base_link
+- unit test:
+    calc_range
+- end to end test:
+    given some simple map and known start state, does the algorithm converge to the correct solution within x timesteps
+- Generate test data with a known start state
+- make launch files that makes initialization not a total bitch
+'''
+
 """
 Localizes Stuff.
 """
@@ -59,8 +78,6 @@ class Localizer(object):
         # load all configuration variables
         self.configure()
 
-        self.VISUALIZE = False
-
         # create necessary ros channels
 
         LASER_SCAN_TOPIC = "/scan"
@@ -71,7 +88,7 @@ class Localizer(object):
 
         # 2D numpy array of occupancy floats in [0,1].
         rospy.logdebug("Fetching map")
-        self.omap = self.get_omap()
+        self.omap, self.map_info = self.get_omap()
         rospy.logdebug("Got map")
 
         rospy.Timer(rospy.Duration(1.0 / self.LOCALIZATION_FREQUENCY), self.timer_callback)
@@ -79,13 +96,15 @@ class Localizer(object):
     def configure(self):
         # the amount of noise to add for each component of the particle state
         # increasing this variable will make the particles diverge faster
+
         self.RANDOMNESS = Delta(0.1, 0.1, 0.05)
-        self.NUM_PARTICLES = 100
+        self.NUM_PARTICLES = 1
         # number of times per second to attempt localization
-        self.LOCALIZATION_FREQUENCY = 1.0
+        self.LOCALIZATION_FREQUENCY = 2.0
         # TODO - better initial pose management
         self.INITIAL_POSE = Particle(0,0,0)
-
+        self.VISUALIZE = False
+        
     def scan_callback(self, data):
         rospy.logdebug("Storing scan data")
         self.last_scan = data
@@ -141,7 +160,7 @@ class Localizer(object):
         array_float[array_float < 0] = np.nan
         # Divide [0,100] into [0,1]
         array_float /= 100.
-        return array_float
+        return array_float, map_msg.info
 
     def motion_update(self, delta, particle):
         x, y, heading = particle
@@ -160,29 +179,47 @@ class Localizer(object):
 
         return Particle(x, y, heading)
 
-    def sensor_update(self, omap, measurement, particle):
+    def sensor_update(self, omap, scan_data, particle, angle_step=10):
         """Calculate weights for particles given a map and sensor data.
-        Basically the likelihood of the measurement at the location.
+        Basically the likelihood of the scan_data at the location.
         Args:
             omap: np array of occupancy
-            measurements: LaserScan message
+            scan_data: LaserScan message
             particles: np array of particles (positions)
+            angle_step: this determines how many laser scan points are generated and tested.
+                        set to 1 to test every angle, 2 to test every other, and so on.
         Returns:
-            An array of weights for the particles.
+            Weight for the particle.
         """
 
-        """Whee, scan matching."""
-        return 2
-        # Angles in the scan relative to the robot.
-        relative_angles = (np.arange(measurement.ranges.shape[0]) * measurement.angle_increment) + measurement.angle_min
-        # Angles in map space.
-        absolute_angles = particle.heading + relative_angles
-        # Ranges observed IRL are in measurement.ranges
-        # Ranges we should've observed if this particle were correct.
-        expected_ranges = [self.calc_range(omap, particle.x, particle.y, a, measurement.range_max)
-                           for a in measurement.ranges]
-        weight = ((expected_ranges - measurement.ranges) ** 2).mean()
-        return weight
+        # compute the set of angles that should be checked
+        num_samples = math.ceil((scan_data.angle_max - scan_data.angle_min) / (scan_data.angle_increment * angle_step))
+        laser_angles = np.linspace(scan_data.angle_min, scan_data.angle_max, num_samples) + particle.heading
+
+        # print(laser_angles)
+
+        # compute expected ranges from the given particle's position and orientation
+        expected_ranges = map(lambda angle: self.calc_range(omap, particle.x, particle.y, angle, scan_data.range_max), laser_angles)
+
+        # sample the corresponding ground truth ranges from the laser scan measurements
+        ground_ranges = scan_data.ranges[0::angle_step]
+
+        # print(len(expected_ranges), len(ground_ranges))
+        
+        # compute MSE between computed ranges and ground truth measurements
+        return ((expected_ranges - ground_ranges) ** 2).mean()
+
+
+        # # Angles in the scan relative to the robot.
+        # relative_angles = (np.arange(measurement.ranges.shape[0]) * measurement.angle_increment) + measurement.angle_min
+        # # Angles in map space.
+        # absolute_angles = particle.heading + relative_angles
+        # # Ranges observed IRL are in measurement.ranges
+        # # Ranges we should've observed if this particle were correct.
+        # expected_ranges = [self.calc_range(omap, particle.x, particle.y, a, measurement.range_max)
+        #                    for a in measurement.ranges]
+        # weight = ((expected_ranges - measurement.ranges) ** 2).mean()
+        # return weight
 
     def calc_range(self, omap, x, y, heading, max_range):
         """
@@ -191,18 +228,39 @@ class Localizer(object):
 
         Copied from https://bitbucket.org/alexbuyval/ardroneum
         """
+
         robot_x, robot_y, robot_a = x, y, heading
+        
         # Threshold value. Above this probability, the cell is expected filled.
         filled_threshold = 0.5
 
-        def is_valid(y, x):
-            return (0 <= y < omap.shape[0] and
-                    0 <= x < omap.shape[1])
-        # What is scale?
-        scale = 1
+        # return true if the given index is within the map
+        def is_valid(_y, _x):
+            return (0 <= _y < omap.shape[0] and
+                    0 <= _x < omap.shape[1])
+        
+        # given the robot's pose in the 'map' frame, compute the corresponding index in 
+        # the occupancy grid map
+        def map_to_grid(map_x, map_y):
+            grid_x = int((map_x - self.map_info.origin.position.x) / self.map_info.resolution)
+            grid_y = int((map_y - self.map_info.origin.position.y) / self.map_info.resolution)
+            
+            return grid_x, grid_y
 
-        x0, y0 = robot_x, robot_y
-        x1, y1 = robot_x + max_range*math.cos(robot_a), robot_y + max_range*math.sin(robot_a)
+        x0, y0 = map_to_grid(robot_x, robot_y)
+        x1, y1 = map_to_grid(robot_x + max_range*math.cos(robot_a), 
+                             robot_y + max_range*math.sin(robot_a))
+
+        # compute the real world distance given a hit point which is a map grid index
+        def _calc_range(_x, _y):
+            xd = (_x - x0)
+            yd = (_y - y0)
+            d = math.sqrt(xd*xd + yd*yd)
+            d_world = d * self.map_info.resolution
+            return d_world
+
+        # x0, y0 = robot_x, robot_y
+        # x1, y1 = robot_x + max_range*math.cos(robot_a), robot_y + max_range*math.sin(robot_a)
 
         if abs(y1-y0) > abs(x1-x0):
             steep = True
@@ -242,11 +300,13 @@ class Localizer(object):
             if not steep:
                 if is_valid(y, x):
                     if omap[y][x] > filled_threshold:
-                        return (math.sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0)) / scale)
+                        return _calc_range(x, y)
+                        # return (math.sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0)) / scale)
             else:
                 if is_valid(x, y):
                     if omap[x][y] > filled_threshold:
-                        return (math.sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0)) / scale)
+                        return _calc_range(x, y)
+                        # return (math.sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0)) / scale)
 
         return max_range
 
@@ -275,7 +335,7 @@ class Localizer(object):
 
     def MCL(self, omap, previous_particles, odometry_delta, sensors):
         """Run one step of Monte Carlo localization."""
-        rospy.loginfo("Attempting Monte Carlo Localization")
+        rospy.logdebug("Attempting Monte Carlo Localization")
 
         # update particle positions based on odometry readings
         particles = \
@@ -284,12 +344,15 @@ class Localizer(object):
 
         # reset accumulated odometry
         self.clear_odometry()
-
+        # print()
         # print(particles)
 
         # update particle weights according to probability of recording the given sensor readings
         particle_weights = \
             map(lambda old_particle: self.sensor_update(omap, sensors, old_particle), previous_particles)
+
+
+        # print(particle_weights)
 
         # compute sum of all particle weights
         particle_mass = sum(particle_weights)
