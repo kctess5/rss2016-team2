@@ -54,10 +54,11 @@ class Localizer(object):
 
         # container for the persistent particles
         self.particles = []
+        self.particle_weights = []
 
         # load all configuration variables
         self.configure()
-        
+
         self.VISUALIZE = False
 
         # create necessary ros channels
@@ -78,13 +79,13 @@ class Localizer(object):
     def configure(self):
         # the amount of noise to add for each component of the particle state
         # increasing this variable will make the particles diverge faster
-        self.RANDOMNESS = Delta(1,1,0.1)
+        self.RANDOMNESS = Delta(0.1, 0.1, 0.05)
         self.NUM_PARTICLES = 100
         # number of times per second to attempt localization
         self.LOCALIZATION_FREQUENCY = 1.0
         # TODO - better initial pose management
         self.INITIAL_POSE = Particle(0,0,0)
-        
+
     def scan_callback(self, data):
         rospy.logdebug("Storing scan data")
         self.last_scan = data
@@ -130,11 +131,11 @@ class Localizer(object):
 
         # print(dir(map_msg.data))
         array_255 = np.array(map_msg.data).reshape((height, width))
-        
+
         if self.VISUALIZE:
             imgplot = plt.imshow(array_255)
             plt.show()
-        
+
         array_float = array_255.astype(np.float)
         # Set unknown cells (-1) to nan.
         array_float[array_float < 0] = np.nan
@@ -143,9 +144,21 @@ class Localizer(object):
         return array_float
 
     def motion_update(self, delta, particle):
-        return Particle(particle.x + delta.x + self.RANDOMNESS.x * np.random.normal(), \
-            particle.y + delta.y + self.RANDOMNESS.y * np.random.normal(), \
-            particle.heading + delta.heading + self.RANDOMNESS.heading * np.random.normal())
+        x, y, heading = particle
+
+        # Add delta
+        # YO comment this out to disable odometry updating.
+        x += delta.x
+        y += delta.y
+        heading += delta.heading
+
+        # Add noise
+        # YO comment this out to disable noise.
+        x += self.RANDOMNESS.x * np.random.normal()
+        y += self.RANDOMNESS.y * np.random.normal()
+        heading += self.RANDOMNESS.heading * np.random.normal()
+
+        return Particle(x, y, heading)
 
     def sensor_update(self, omap, measurement, particle):
         """Calculate weights for particles given a map and sensor data.
@@ -242,6 +255,7 @@ class Localizer(object):
             self.INITIAL_POSE.x, self.INITIAL_POSE.y, self.INITIAL_POSE.heading)
 
         self.particles.append(self.INITIAL_POSE)
+        self.particle_weights.append(0.)
 
     def timer_callback(self, event):
         rospy.logdebug("Stepping particle filter")
@@ -253,11 +267,11 @@ class Localizer(object):
         if self.last_scan == None:
             return
 
-        self.particles = \
-            self.MCL(self.omap, self.particles, self.accumulated_odometry_delta, self.last_scan)
+        # update particles and weights
+        self.particles, self.particle_weights = self.MCL(
+            self.omap, self.particles, self.accumulated_odometry_delta, self.last_scan)
 
-        # TODO send weights
-        self.publish_particles(self.particles, None)
+        self.publish_particles(self.particles, self.particle_weights)
 
     def MCL(self, omap, previous_particles, odometry_delta, sensors):
         """Run one step of Monte Carlo localization."""
@@ -286,11 +300,12 @@ class Localizer(object):
         # print ("particle weights:", particle_weights)
 
         # fill new_particles by sampling from the reweighted particle array with replacement
-        new_particles = np.random.choice(len(particles), len(particles), True, particle_weights)
-        new_particles = map(lambda idx: particles[idx], new_particles)
+        new_particles_indices = np.random.choice(len(particles), len(particles), True, particle_weights)
+        new_particles = map(lambda idx: particles[idx], new_particles_indices)
+        new_weights   = map(lambda idx: particle_weights[idx], new_particles_indices)
         # print(new_particles)
 
-        return new_particles
+        return new_particles, new_weights
 
     def publish_particles(self, particles, particle_weights):
         header = Header()
