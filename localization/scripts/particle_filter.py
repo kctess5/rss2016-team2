@@ -39,7 +39,6 @@ def log_level(str_level):
 
 '''
 TODOs:
-- publish best particle
 - publish necessary transforms based off the best particle
     map to odom
     odom to base_link is published by the odometer
@@ -98,7 +97,7 @@ class Localizer(object):
         # increasing this variable will make the particles diverge faster
 
         self.RANDOMNESS = Delta(0.1, 0.1, 0.05)
-        self.NUM_PARTICLES = 1
+        self.NUM_PARTICLES = 10
         # number of times per second to attempt localization
         self.LOCALIZATION_FREQUENCY = 2.0
         # TODO - better initial pose management
@@ -121,7 +120,7 @@ class Localizer(object):
         # calculate delta between this and last sensor reading
         x_d = pos.x - self.last_pose.position.x
         y_d = pos.y - self.last_pose.position.y
-        heading_d = orientation.z - self.last_pose.orientation.z
+        heading_d = quaternion_to_angle(orientation) - quaternion_to_angle(self.last_pose.orientation)
 
         # store deltas
         aod = self.accumulated_odometry_delta
@@ -382,8 +381,7 @@ class Localizer(object):
         pa.poses = map(particle_to_pose, particles)
         self.pub_particles.publish(pa)
 
-        # TODO need weights to get real best.
-        bestParticle = particles[0]
+        bestParticle = particles[np.argmax(particle_weights)]
         pb = PoseStamped()
         pb.header = header
         pb.pose = particle_to_pose(bestParticle)
@@ -393,8 +391,20 @@ def particle_to_pose(particle):
     pose = Pose()
     pose.position.x = particle.x
     pose.position.y = particle.y
-    pose.orientation = Quaternion(*tf.transformations.quaternion_from_euler(0, 0, particle.heading))
+    pose.orientation = angle_to_quaternion(particle.heading)
     return pose
+
+def angle_to_quaternion(angle):
+    """Convert an angle in radians into a quaternion _message_."""
+    return Quaternion(*tf.transformations.quaternion_from_euler(0, 0, angle))
+
+def quaternion_to_angle(q):
+    """Convert a quaternion _message_ into an angle in radians.
+    The angle represents the yaw.
+    This is not just the z component of the quaternion."""
+    x, y, z, w = q.x, q.y, q.z, q.w
+    roll, pitch, yaw = tf.transformations.euler_from_quaternion((x, y, z, w))
+    return yaw
 
 Particle = collections.namedtuple("Particle", ["x", "y", "heading"])
 Delta = collections.namedtuple("Delta", ["x", "y", "heading"])
