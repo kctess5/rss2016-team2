@@ -392,12 +392,21 @@ class Localizer(object):
     def publish_tf(self, particles, particle_weights):
         """Publish a tf from map to odom.
         The tf is such that base_link appears in the same place as the best particle."""
-        # TODO not done.
         bestParticle = particles[np.argmax(particle_weights)]
 
+        # Difference from odom to best particle.
+        diff_x = bestParticle.x - self.last_pose.position.x
+        diff_y = bestParticle.y - self.last_pose.position.y
+        diff_yaw = bestParticle.heading - quaternion_to_angle(self.last_pose.orientation)
+
+        # Rotate the diffs because of rotation ordering.
+        rotater = tf.transformations.rotation_matrix(angle=diff_yaw, direction=(0, 0, 1))
+        tf_x, tf_y, _, _ = rotater.dot([diff_x, diff_y, 0, 1])
+        tf_yaw = diff_yaw
+
         self.pub_tf.sendTransform(
-            translation=(0, 0, 0),
-            rotation=tf.transformations.quaternion_from_euler(0, 0, 0),
+            translation=(tf_x, tf_y, 0),
+            rotation=tf.transformations.quaternion_from_euler(0, 0, tf_yaw),
             time=rospy.Time.now(),
             child="odom",
             parent="map")
