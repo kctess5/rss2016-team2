@@ -84,6 +84,7 @@ class Localizer(object):
         self.odom = rospy.Subscriber("/vesc/odom", Odometry, self.odometry_callback)
         self.pub_particles = rospy.Publisher('~particles', PoseArray, queue_size=1)
         self.pub_guess = rospy.Publisher('~guess', PoseStamped, queue_size=1)
+        self.pub_tf = tf.TransformBroadcaster()
 
         # 2D numpy array of occupancy floats in [0,1].
         rospy.logdebug("Fetching map")
@@ -331,6 +332,7 @@ class Localizer(object):
             self.omap, self.particles, self.accumulated_odometry_delta, self.last_scan)
 
         self.publish_particles(self.particles, self.particle_weights)
+        self.publish_tf(self.particles, self.particle_weights)
 
     def MCL(self, omap, previous_particles, odometry_delta, sensors):
         """Run one step of Monte Carlo localization."""
@@ -386,6 +388,19 @@ class Localizer(object):
         pb.header = header
         pb.pose = particle_to_pose(bestParticle)
         self.pub_guess.publish(pb)
+
+    def publish_tf(self, particles, particle_weights):
+        """Publish a tf from map to odom.
+        The tf is such that base_link appears in the same place as the best particle."""
+        # TODO not done.
+        bestParticle = particles[np.argmax(particle_weights)]
+
+        self.pub_tf.sendTransform(
+            translation=(0, 0, 0),
+            rotation=tf.transformations.quaternion_from_euler(0, 0, 0),
+            time=rospy.Time.now(),
+            child="odom",
+            parent="map")
 
 def particle_to_pose(particle):
     pose = Pose()
