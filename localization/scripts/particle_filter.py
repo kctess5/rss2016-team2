@@ -39,11 +39,6 @@ def log_level(str_level):
 
 '''
 TODOs:
-- publish necessary transforms based off the best particle
-    map to odom
-    odom to base_link is published by the odometer
-        when we publish map to odom we should first subtract the odom to base link transform
-        so that the odometer transform gives us the correct car position between localization
 - publish synthetic laser scan data for visualization purposes
     publish in frame of base_link
 - unit test:
@@ -97,8 +92,8 @@ class Localizer(object):
         # the amount of noise to add for each component of the particle state
         # increasing this variable will make the particles diverge faster
 
-        self.RANDOMNESS = Delta(0.1, 0.1, 0.05)
-        self.NUM_PARTICLES = 10
+        self.RANDOMNESS = Delta(0.2, 0.2, 0.2)
+        self.NUM_PARTICLES = 30
         # number of times per second to attempt localization
         self.LOCALIZATION_FREQUENCY = 2.0
         # TODO - better initial pose management
