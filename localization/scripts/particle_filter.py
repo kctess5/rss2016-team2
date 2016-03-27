@@ -104,7 +104,7 @@ class Localizer(object):
         # TODO - better initial pose management
         self.INITIAL_POSE = Particle(0,0,0)
         self.VISUALIZE = False
-        
+
     def scan_callback(self, data):
         rospy.logdebug("Storing scan data")
         self.last_scan = data
@@ -205,7 +205,7 @@ class Localizer(object):
         ground_ranges = scan_data.ranges[0::angle_step]
 
         # print(len(expected_ranges), len(ground_ranges))
-        
+
         # compute MSE between computed ranges and ground truth measurements
         return ((expected_ranges - ground_ranges) ** 2).mean()
 
@@ -230,7 +230,7 @@ class Localizer(object):
         """
 
         robot_x, robot_y, robot_a = x, y, heading
-        
+
         # Threshold value. Above this probability, the cell is expected filled.
         filled_threshold = 0.5
 
@@ -238,17 +238,17 @@ class Localizer(object):
         def is_valid(_y, _x):
             return (0 <= _y < omap.shape[0] and
                     0 <= _x < omap.shape[1])
-        
-        # given the robot's pose in the 'map' frame, compute the corresponding index in 
+
+        # given the robot's pose in the 'map' frame, compute the corresponding index in
         # the occupancy grid map
         def map_to_grid(map_x, map_y):
             grid_x = int((map_x - self.map_info.origin.position.x) / self.map_info.resolution)
             grid_y = int((map_y - self.map_info.origin.position.y) / self.map_info.resolution)
-            
+
             return grid_x, grid_y
 
         x0, y0 = map_to_grid(robot_x, robot_y)
-        x1, y1 = map_to_grid(robot_x + max_range*math.cos(robot_a), 
+        x1, y1 = map_to_grid(robot_x + max_range*math.cos(robot_a),
                              robot_y + max_range*math.sin(robot_a))
 
         # compute the real world distance given a hit point which is a map grid index
