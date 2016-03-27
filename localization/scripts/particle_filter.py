@@ -394,22 +394,28 @@ class Localizer(object):
         The tf is such that base_link appears in the same place as the best particle."""
         bestParticle = particles[np.argmax(particle_weights)]
 
-        # Difference from odom to best particle.
-        diff_x = bestParticle.x - self.last_pose.position.x
-        diff_y = bestParticle.y - self.last_pose.position.y
+        odom_xy = np.array([self.last_pose.position.x, self.last_pose.position.y])
+        guess_xy = np.array([bestParticle.x, bestParticle.y])
         diff_yaw = bestParticle.heading - quaternion_to_angle(self.last_pose.orientation)
+        # diff_yaw = np.deg2rad(45)
 
-        # Rotate the diffs because of rotation ordering.
-        rotater = tf.transformations.rotation_matrix(angle=diff_yaw, direction=(0, 0, 1))
-        tf_x, tf_y, _, _ = rotater.dot([diff_x, diff_y, 0, 1])
+        rodom_xy = rotatexy(diff_yaw, *odom_xy)
+
+        tf_xy = guess_xy - rodom_xy
         tf_yaw = diff_yaw
 
         self.pub_tf.sendTransform(
-            translation=(tf_x, tf_y, 0),
+            translation=(tf_xy[0], tf_xy[1], 0),
             rotation=tf.transformations.quaternion_from_euler(0, 0, tf_yaw),
             time=rospy.Time.now(),
             child="odom",
             parent="map")
+
+def rotatexy(angle, x, y):
+    """Rotate xy coordinates by some angle in 2d."""
+    rotater = tf.transformations.rotation_matrix(angle=angle, direction=(0, 0, 1))
+    rx, ry, _, _ = rotater.dot([x, y, 0, 1])
+    return np.array([rx, ry])
 
 def particle_to_pose(particle):
     pose = Pose()
