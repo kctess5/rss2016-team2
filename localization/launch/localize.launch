@@ -1,5 +1,6 @@
 <launch>
 	<param name="log_level" value="INFO"/>
 	<include file="$(find localization)/launch/map_server.launch" />
+	<node pkg="tf" type="static_transform_publisher" name="base_broadcaster" args="0 0 0 0 0 0 1 hokuyo_link base_link 100" />
 	<node name="localizer" pkg="localization" type="particle_filter.py" output="screen" />
 </launch>

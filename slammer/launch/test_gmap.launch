@@ -12,7 +12,7 @@
 
   <!-- Run the slam_gmapping alg real fast. -->
   <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping"
-        args="scan:=/scan_clipped">
+        args="scan:=/racecar/laser/scan">
     <param name="~map_update_interval" value="0.1" />
     <param name="~xmin" value="-$(arg mapradius)" />
     <param name="~ymin" value="-$(arg mapradius)" />
