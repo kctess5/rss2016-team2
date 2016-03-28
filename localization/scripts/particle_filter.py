@@ -131,7 +131,7 @@ class Localizer(object):
 
         # create necessary ros channels
 
-        LASER_SCAN_TOPIC = "/scan"
+        LASER_SCAN_TOPIC = rospy.get_param("~scan", "/scan")
         ODOM_TOPIC = "/vesc/odom"
         if simulated:
             LASER_SCAN_TOPIC = '/racecar/laser/scan'
