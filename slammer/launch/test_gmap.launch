@@ -1,11 +1,11 @@
 <launch>
 
   <arg name="mapradius" default="100" />
-  <arg name="bagfile" default="$(env HOME)/bags/2016-03-10-02-41-07-lasercorner-ntf.orig.bag" />
+  <arg name="bagfile" default="$(env HOME)/bags/2016-03-10-02-41-07-lasercorner-ntf.orig.bag --clock" />
 
   <!-- Playback from a rosbag. Note this does not loop. -->
   <node pkg="rosbag" type="play" name="play"
-        args="$(arg bagfile)"/>
+	args="$(arg bagfile)"/>
 
   <!-- Run the scan through the clipper to get rid of junk angles. -->
   <node pkg="slammer" type="scan_clipper.py" name="scan_clipper" />
