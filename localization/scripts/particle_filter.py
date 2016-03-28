@@ -531,6 +531,7 @@ class Localizer(object):
         msg2 = copy.copy(self.last_scan)
         msg2.ranges = msg2.ranges.copy()
 
+        # Angles where 0 is forwards for the robot.
         angles = (np.arange(msg2.ranges.shape[0]) * msg2.angle_increment) + msg2.angle_min
 
         # This makes a fuzzy halo. Just to see something to make sure it works.
@@ -539,7 +540,7 @@ class Localizer(object):
 
         bestParticle = self.particles[np.argmax(self.particle_weights)]
         expected_ranges = [self.calc_range(self.omap, bestParticle.x, bestParticle.y,
-                                           angle, msg2.range_max)
+                                           angle + bestParticle.heading, msg2.range_max)
                            for angle in angles]
 
         msg2.ranges[:] = expected_ranges
