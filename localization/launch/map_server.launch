@@ -1,3 +1,10 @@
 <launch>
-    <node pkg="map_server" name="map_server" type="map_server" args="$(find localization)/maps/synthetic.map.yaml" />
+    <!--
+    Requires arg map.
+    Choices:
+	- $(find localization)/maps/synthetic.map.yaml
+	- $(find localization)/maps/lab.map.yaml
+    -->
+    <arg name="map" />
+    <node pkg="map_server" name="map_server" type="map_server" args="$(arg map)" />
 </launch>

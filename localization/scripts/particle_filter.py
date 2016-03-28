@@ -113,9 +113,7 @@ class Localizer(object):
         rospy.init_node('localizer', anonymous=True, log_level=log_level(ll))
         rospy.loginfo("Initializing Monte Carlo Localization particle filter")
 
-        # accumulated odometry delta - reset whenever the particle filter runs
-        # self.this_odometry = Particle(0,0,0)
-        # self.clear_odometry()
+        # Odometry data is saved in last_pose (Most recent) and prev_pose (last time MCL ran)
         self.last_pose = None
         self.prev_pose = None
         self.last_scan = None
@@ -184,24 +182,9 @@ class Localizer(object):
 
     def odometry_callback(self, data):
         rospy.logdebug("Storing odometry data")
-        # if self.last_pose == None:
-        #     self.last_pose = data.pose.pose
-        #     return
-
-        # pos = data.pose.pose.position
-        # orientation = data.pose.pose.orientation
-
-        # calculate delta between this and last sensor reading
-        # x_d = pos.x - self.last_pose.position.x
-        # y_d = pos.y - self.last_pose.position.y
-        # heading_d = quaternion_to_angle(orientation) - quaternion_to_angle(self.last_pose.orientation)
-
-        # store deltas
-        # aod = self.accumulated_odometry_delta
-        # self.accumulated_odometry_delta = Delta(x_d + aod.x, y_d + aod.y, heading_d + aod.heading)
-
-        # store this pose message for future use
         self.last_pose = data.pose.pose
+        if self.prev_pose == None:
+            self.prev_pose = data.pose.pose
 
     def clear_odometry(self):
         rospy.logdebug("Clearing accumulated odometry")
@@ -238,6 +221,8 @@ class Localizer(object):
 
     def motion_update(self, delta, prev_particle):
         x, y, heading = prev_particle
+
+        # Turn stored odometry Poses into Particles
         prev_odom = Particle(
                 self.prev_pose.position.x,
                 self.prev_pose.position.y,
@@ -247,6 +232,8 @@ class Localizer(object):
                 self.last_pose.position.y,
                 quaternion_to_angle(self.last_pose.orientation))
 
+        # The amount to rotate the delta point before updating
+        # (If odometry were perfect and there were no noise, this would be 0)
         heading_error = prev_particle.heading - prev_odom.heading
 
         delta_odom = Delta(
@@ -254,20 +241,14 @@ class Localizer(object):
                 this_odom.y - prev_odom.y,
                 this_odom.heading - prev_odom.heading)
 
-        rot_delta_x, rot_delta_y = self.rotatexy(heading_error, delta_odom.x, delta_odom.y)
+        # Rotate the new odometry point around the old point by heading_error
+        rot_delta_x, rot_delta_y = rotatexy(heading_error, delta_odom.x, delta_odom.y)
 
         # Add delta
         # YO comment this out to disable odometry updating.
         x += rot_delta_x
         y += rot_delta_y
         heading += delta_odom.heading
-
-
-        # # Add delta
-        # # YO comment this out to disable odometry updating.
-        # x += delta.x
-        # y += delta.y
-        # heading += delta.heading
 
         # Add noise
         # YO comment this out to disable noise.
@@ -468,7 +449,7 @@ class Localizer(object):
 
         # update particles and weights
         self.particles, self.particle_weights = self.MCL(
-            self.omap, self.particles, self.accumulated_odometry_delta, self.last_scan)
+            self.omap, self.particles, [], self.last_scan)
 
         self.publish_particles(self.particles, self.particle_weights)
         self.publish_tf(self.particles, self.particle_weights)
@@ -620,3 +601,4 @@ if __name__ == '__main__':
     except rospy.ROSInterruptException:
         pass
     rospy.spin()
+
