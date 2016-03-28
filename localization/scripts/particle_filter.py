@@ -89,11 +89,6 @@ class DynamicPlot():
 
 '''
 TODOs:
-- publish necessary transforms based off the best particle
-    map to odom
-    odom to base_link is published by the odometer
-        when we publish map to odom we should first subtract the odom to base link transform
-        so that the odometer transform gives us the correct car position between localization
 - publish synthetic laser scan data for visualization purposes
     publish in frame of base_link
 - unit test:
