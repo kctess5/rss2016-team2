@@ -532,10 +532,16 @@ class Localizer(object):
         msg2.ranges = msg2.ranges.copy()
 
         angles = (np.arange(msg2.ranges.shape[0]) * msg2.angle_increment) + msg2.angle_min
-        # expected_ranges = [self.calc_range(omap, particle.x, particle.y, angle, scan_data.range_max)
-        #                    for angle in angles]
-        expected_ranges = np.array([2.4 + np.random.rand() * 0.1
-                                    for angle in angles])
+
+        # This makes a fuzzy halo. Just to see something to make sure it works.
+        # expected_ranges = np.array([2.4 + np.random.rand() * 0.1
+        #                             for angle in angles])
+
+        bestParticle = self.particles[np.argmax(self.particle_weights)]
+        expected_ranges = [self.calc_range(self.omap, bestParticle.x, bestParticle.y,
+                                           angle, msg2.range_max)
+                           for angle in angles]
+
         msg2.ranges[:] = expected_ranges
 
         self.pub_expected_scan.publish(msg2)
