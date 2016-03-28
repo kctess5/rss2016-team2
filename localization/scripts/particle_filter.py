@@ -25,6 +25,7 @@ import math
 import numpy as np
 import random
 import collections
+import copy
 
 import matplotlib.pyplot as plt
 
@@ -142,6 +143,7 @@ class Localizer(object):
         self.pub_particles = rospy.Publisher('~particles', PoseArray, queue_size=1)
         self.pub_guess = rospy.Publisher('~guess', PoseStamped, queue_size=1)
         self.pub_tf = tf.TransformBroadcaster()
+        self.pub_expected_scan = rospy.Publisher('~expected_scan', LaserScan, queue_size=1)
 
         # 2D numpy array of occupancy floats in [0,1].
         rospy.logdebug("Fetching map")
@@ -249,7 +251,7 @@ class Localizer(object):
         return Particle(x, y, heading)
 
     def sensor_update(self, omap, scan_data, particle, angle_step=5):
-        """Calculate weights for particles given a map and sensor data.
+        """Calculate weight for particles given a map and sensor data.
         Basically the likelihood of the scan_data at the location.
         Args:
             omap: np array of occupancy
@@ -443,6 +445,7 @@ class Localizer(object):
 
         self.publish_particles(self.particles, self.particle_weights)
         self.publish_tf(self.particles, self.particle_weights)
+        self.publish_expected_scan()
 
     def MCL(self, omap, previous_particles, odometry_delta, sensors):
         """Run one step of Monte Carlo localization."""
@@ -515,6 +518,27 @@ class Localizer(object):
             time=rospy.Time.now(),
             child="odom",
             parent="map")
+
+    def publish_expected_scan(self):
+        """Publish a LaserScan of the expected ranges.
+        From the vantage point of the best particle."""
+        # TODO get best particle and use position and real particle
+
+        if self.last_scan == None:
+            return
+
+        # Copy the last scan, as a template for which angles to show.
+        msg2 = copy.copy(self.last_scan)
+        msg2.ranges = msg2.ranges.copy()
+
+        angles = (np.arange(msg2.ranges.shape[0]) * msg2.angle_increment) + msg2.angle_min
+        # expected_ranges = [self.calc_range(omap, particle.x, particle.y, angle, scan_data.range_max)
+        #                    for angle in angles]
+        expected_ranges = np.array([2.4 + np.random.rand() * 0.1
+                                    for angle in angles])
+        msg2.ranges[:] = expected_ranges
+
+        self.pub_expected_scan.publish(msg2)
 
     def loop(self):
         # update visualization 
