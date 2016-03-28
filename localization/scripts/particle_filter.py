@@ -25,6 +25,7 @@ import math
 import numpy as np
 import random
 import collections
+import copy
 
 import matplotlib.pyplot as plt
 
@@ -37,13 +38,58 @@ def log_level(str_level):
         return rospy.WARN
 
 
+class DynamicPlot():
+
+    def initialize(self):
+        plt.ion()
+        #Set up plot
+        self.fig = plt.figure(figsize=plt.figaspect(2.))
+        
+        self.ax0 = self.fig.add_subplot(2,1,1)
+
+        self.laser_angular, = self.ax0.plot([],[], 'r.')
+        self.laser_filtered, = self.ax0.plot([],[], 'r-')
+        self.laser_eroded, = self.ax0.plot([],[], 'c-')
+        self.laser_maxima, = self.ax0.plot([],[], 'wo')
+        self.desired_heading_point, = self.ax0.plot([],[], 'ro')
+        
+        self.ax0.set_ylim(-1, 15)
+        self.ax0.set_xlim(-math.pi, +math.pi)
+        self.ax0.invert_xaxis()
+        self.ax0.grid()
+        
+        self.ax1 = self.fig.add_subplot(2,1,2) 
+        self.ax1.set_ylim(-1, 15)
+        self.ax1.set_xlim(-math.pi, +math.pi)
+        self.ax1.invert_xaxis()
+        self.ax1.grid()
+        self.laser_euclid, = self.ax1.plot([],[], '.')
+        self.laser_euclid_eroded, = self.ax1.plot([],[], 'r.')
+        self.ax1.plot(0,0, 'ko')
+        self.current_heading_angle, = self.ax1.plot([0,0],[0,1], 'k-')
+        self.desired_heading_angle, = self.ax1.plot([],[], 'g-')
+        self.selected_maneuver, = self.ax1.plot([],[], 'c-')
+        #self.costmap = self.ax1.pcolormesh(np.ones((10,10)))
+        #
+        # self.ax2 = self.fig.add_subplot(1,3,3) 
+        
+        self.redraw()
+        
+    def redraw(self):
+        #Need both of these in order to rescale
+        self.ax0.relim()
+        self.ax0.autoscale_view()
+        
+        self.ax1.relim()
+        self.ax1.autoscale_view()
+        
+        #We need to draw *and* flush
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+
+
 '''
 TODOs:
-- publish necessary transforms based off the best particle
-    map to odom
-    odom to base_link is published by the odometer
-        when we publish map to odom we should first subtract the odom to base link transform
-        so that the odometer transform gives us the correct car position between localization
 - publish synthetic laser scan data for visualization purposes
     publish in frame of base_link
 - unit test:
@@ -59,7 +105,10 @@ Localizes Stuff.
 """
 
 class Localizer(object):
-    def __init__(self):
+    def __init__(self, visualize=False, simulated=False):
+
+        self.SHOW_VIS = visualize
+
         ll = rospy.get_param('log_level')
         rospy.init_node('localizer', anonymous=True, log_level=log_level(ll))
         rospy.loginfo("Initializing Monte Carlo Localization particle filter")
@@ -79,14 +128,24 @@ class Localizer(object):
         # load all configuration variables
         self.configure()
 
+        self.first_laser_recieved = False
+        self.laser_angles = None
+        self.expected_angles = None
+
         # create necessary ros channels
 
-        LASER_SCAN_TOPIC = "/scan"
+        LASER_SCAN_TOPIC = rospy.get_param("~scan", "/scan")
+        ODOM_TOPIC = "/vesc/odom"
+        if simulated:
+            LASER_SCAN_TOPIC = '/racecar/laser/scan'
+            ODOM_TOPIC = "/odom"
+
         self.sub = rospy.Subscriber(LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
-        self.odom = rospy.Subscriber("/vesc/odom", Odometry, self.odometry_callback)
+        self.odom = rospy.Subscriber(ODOM_TOPIC, Odometry, self.odometry_callback)
         self.pub_particles = rospy.Publisher('~particles', PoseArray, queue_size=1)
         self.pub_guess = rospy.Publisher('~guess', PoseStamped, queue_size=1)
         self.pub_tf = tf.TransformBroadcaster()
+        self.pub_expected_scan = rospy.Publisher('~expected_scan', LaserScan, queue_size=1)
 
         # 2D numpy array of occupancy floats in [0,1].
         rospy.logdebug("Fetching map")
@@ -95,21 +154,33 @@ class Localizer(object):
 
         rospy.Timer(rospy.Duration(1.0 / self.LOCALIZATION_FREQUENCY), self.timer_callback)
 
+        if self.SHOW_VIS:
+            self.viz = DynamicPlot()
+            self.viz.initialize()
+            while not rospy.is_shutdown():
+                self.loop()
+                rospy.sleep(0.1)
+
+        
+
     def configure(self):
         # the amount of noise to add for each component of the particle state
         # increasing this variable will make the particles diverge faster
 
-        self.RANDOMNESS = Delta(0.1, 0.1, 0.05)
-        self.NUM_PARTICLES = 10
+        self.RANDOMNESS = Delta(0.2, 0.2, 0.1)
+        self.NUM_PARTICLES = 15
         # number of times per second to attempt localization
-        self.LOCALIZATION_FREQUENCY = 2.0
+        self.LOCALIZATION_FREQUENCY = 20.0
         # TODO - better initial pose management
-        self.INITIAL_POSE = Particle(0,0,0)
+        self.INITIAL_POSE = Particle(0.0,0,0.0)
         self.VISUALIZE = False
 
     def scan_callback(self, data):
         rospy.logdebug("Storing scan data")
         self.last_scan = data
+
+        if self.laser_angles == None:
+            self.laser_angles = np.linspace(data.angle_min, data.angle_max, math.ceil((data.angle_max - data.angle_min) / data.angle_increment))
 
     def odometry_callback(self, data):
         rospy.logdebug("Storing odometry data")
@@ -206,8 +277,8 @@ class Localizer(object):
 
         return Particle(x, y, heading)
 
-    def sensor_update(self, omap, scan_data, particle, angle_step=10):
-        """Calculate weights for particles given a map and sensor data.
+    def sensor_update(self, omap, scan_data, particle, angle_step=5):
+        """Calculate weight for particles given a map and sensor data.
         Basically the likelihood of the scan_data at the location.
         Args:
             omap: np array of occupancy
@@ -223,18 +294,57 @@ class Localizer(object):
         num_samples = math.ceil((scan_data.angle_max - scan_data.angle_min) / (scan_data.angle_increment * angle_step))
         laser_angles = np.linspace(scan_data.angle_min, scan_data.angle_max, num_samples) + particle.heading
 
-        # print(laser_angles)
-
         # compute expected ranges from the given particle's position and orientation
         expected_ranges = map(lambda angle: self.calc_range(omap, particle.x, particle.y, angle, scan_data.range_max), laser_angles)
 
+        self.expected_angles = laser_angles
+        self.expected_ranges = expected_ranges
+
         # sample the corresponding ground truth ranges from the laser scan measurements
         ground_ranges = scan_data.ranges[0::angle_step]
+        ground_intensites = scan_data.intensities[0::angle_step]
+
+        # print(ground_intensites)
+
+        # self.show_angles = laser_angles
+        # self.show_ranges = expected_ranges
+
+        self.show_angles = []
+        self.show_ranges = []
+
+        errs = []
+        for i in xrange(len(expected_ranges)):
+            # ignore synthetic ranges that are at the limit, because they are
+            # more often than not a result of holes in the map data and are inaccurate
+            if not expected_ranges[i] == scan_data.range_max:
+                self.show_angles.append(self.expected_angles[i])
+                self.show_ranges.append(self.expected_ranges[i])
+
+                distance_error = expected_ranges[i] - ground_ranges[i]
+                intensity = ground_intensites[i]
+                abs_range = ground_ranges[i]
+
+                err = distance_error / (abs_range)
+
+                errs.append(abs(err))
+
+                # errs.append(ground_intensites[i] * (expected_ranges[i] - ground_ranges[i]) / ground_ranges[i])
+                # errs.append(ground_intensites[i] * (expected_ranges[i] - ground_ranges[i]) / ground_ranges[i])
+
+        # avg_err = reduce(lambda x, y: x + abs(y), errs) / len(errs)
+        # avg_err = reduce(lambda x, y: x + y, errs) / len(errs)
+        avg_err = reduce(lambda x, y: x + y, errs) / len(errs)
+        return 1.0 / avg_err
+        # return (1.0 / avg_err)**2
+
+        # return 1.0 / (errs ** 2).mean()
+                # print "max"
+            # pass
 
         # print(len(expected_ranges), len(ground_ranges))
 
         # compute MSE between computed ranges and ground truth measurements
-        return ((expected_ranges - ground_ranges) ** 2).mean()
+        # return 1.0 / ((expected_ranges - ground_ranges) ** 2).mean()
 
 
         # # Angles in the scan relative to the robot.
@@ -354,12 +464,15 @@ class Localizer(object):
         if self.last_scan == None:
             return
 
+        # print("optimal", self.sensor_update(self.omap, self.last_scan, Particle(0,0,0)))
+
         # update particles and weights
         self.particles, self.particle_weights = self.MCL(
             self.omap, self.particles, self.accumulated_odometry_delta, self.last_scan)
 
         self.publish_particles(self.particles, self.particle_weights)
         self.publish_tf(self.particles, self.particle_weights)
+        self.publish_expected_scan()
 
     def MCL(self, omap, previous_particles, odometry_delta, sensors):
         """Run one step of Monte Carlo localization."""
@@ -372,15 +485,10 @@ class Localizer(object):
 
         # reset accumulated odometry
         self.clear_odometry()
-        # print()
-        # print(particles)
 
         # update particle weights according to probability of recording the given sensor readings
         particle_weights = \
             map(lambda old_particle: self.sensor_update(omap, sensors, old_particle), previous_particles)
-
-
-        # print(particle_weights)
 
         # compute sum of all particle weights
         particle_mass = sum(particle_weights)
@@ -388,13 +496,10 @@ class Localizer(object):
         # reweight particles - normalization of probability
         particle_weights = map(lambda x: float(x) / float(particle_mass), particle_weights)
 
-        # print ("particle weights:", particle_weights)
-
         # fill new_particles by sampling from the reweighted particle array with replacement
         new_particles_indices = np.random.choice(len(particles), len(particles), True, particle_weights)
         new_particles = map(lambda idx: particles[idx], new_particles_indices)
         new_weights   = map(lambda idx: particle_weights[idx], new_particles_indices)
-        # print(new_particles)
 
         return new_particles, new_weights
 
@@ -411,6 +516,9 @@ class Localizer(object):
         self.pub_particles.publish(pa)
 
         bestParticle = particles[np.argmax(particle_weights)]
+
+        print (bestParticle, particle_weights[np.argmax(particle_weights)])
+
         pb = PoseStamped()
         pb.header = header
         pb.pose = particle_to_pose(bestParticle)
@@ -437,6 +545,46 @@ class Localizer(object):
             time=rospy.Time.now(),
             child="odom",
             parent="map")
+
+    def publish_expected_scan(self):
+        """Publish a LaserScan of the expected ranges.
+        From the vantage point of the best particle."""
+        # TODO get best particle and use position and real particle
+
+        if self.last_scan == None:
+            return
+
+        # Copy the last scan, as a template for which angles to show.
+        msg2 = copy.copy(self.last_scan)
+        msg2.ranges = msg2.ranges.copy()
+
+        # Angles where 0 is forwards for the robot.
+        angles = (np.arange(msg2.ranges.shape[0]) * msg2.angle_increment) + msg2.angle_min
+
+        # This makes a fuzzy halo. Just to see something to make sure it works.
+        # expected_ranges = np.array([2.4 + np.random.rand() * 0.1
+        #                             for angle in angles])
+
+        bestParticle = self.particles[np.argmax(self.particle_weights)]
+        expected_ranges = [self.calc_range(self.omap, bestParticle.x, bestParticle.y,
+                                           angle + bestParticle.heading, msg2.range_max)
+                           for angle in angles]
+
+        msg2.ranges[:] = expected_ranges
+
+        self.pub_expected_scan.publish(msg2)
+
+    def loop(self):
+        # update visualization 
+        if self.SHOW_VIS and self.last_scan and not self.expected_angles == None:
+
+            self.viz.laser_angular.set_data(self.laser_angles, self.last_scan.ranges)
+            # self.viz.laser_euclid.set_data(self.expected_angles, self.expected_ranges)
+            self.viz.laser_euclid.set_data(self.show_angles, self.show_ranges)
+            # self.viz.ax2.imshow(self.image)
+            
+            self.viz.redraw()
+
 
 def rotatexy(angle, x, y):
     """Rotate xy coordinates by some angle in 2d."""
@@ -468,7 +616,7 @@ Delta = collections.namedtuple("Delta", ["x", "y", "heading"])
 
 if __name__ == '__main__':
     try:
-        Localizer()
+        Localizer(True, True)
     except rospy.ROSInterruptException:
         pass
     rospy.spin()
