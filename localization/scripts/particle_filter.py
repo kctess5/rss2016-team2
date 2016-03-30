@@ -173,7 +173,8 @@ class Localizer(object):
         # the amount of noise to add for each component of the particle state
         # increasing this variable will make the particles diverge faster
 
-        self.RANDOMNESS = Delta(0.25, 0.25, 0.15)
+        # self.RANDOMNESS = Delta(0.25, 0.25, 0.15)
+        self.RANDOMNESS = Delta(0.06, 0.06, 0.06)
         self.NUM_PARTICLES = 50
         # number of times per second to attempt localization
         self.LOCALIZATION_FREQUENCY = 30.0
@@ -210,6 +211,7 @@ class Localizer(object):
         - np.nan: Unknown cell.
         """
         map_service_name = rospy.get_param("~static_map", "static_map")
+        print(map_service_name)
         rospy.wait_for_service(map_service_name)
         map_msg = rospy.ServiceProxy(map_service_name, GetMap)().map
 
@@ -268,7 +270,7 @@ class Localizer(object):
 
         return Particle(x, y, heading)
 
-    def sensor_update(self, omap, scan_data, particle, method=ANGLE_MSE):
+    def sensor_update(self, omap, scan_data, particle, method=DISTANCE_HISTOGRAM):
         """Calculate weight for particles given a map and sensor data.
         Basically the likelihood of the scan_data at the location.
         Args:
@@ -353,6 +355,7 @@ class Localizer(object):
 
         # don't start until scanner and odometry data is available
         if self.last_scan == None or self.last_pose == None:
+            print "insufficient data"
             return
 
         # update particles and weights
@@ -406,6 +409,7 @@ class Localizer(object):
         self.pub_particles.publish(pa)
 
         bestParticle = particles[np.argmax(particle_weights)]
+        print(bestParticle)
 
         pb = PoseStamped()
         pb.header = header
@@ -504,7 +508,7 @@ Delta = collections.namedtuple("Delta", ["x", "y", "heading"])
 
 if __name__ == '__main__':
     try:
-        Localizer(True, True)
+        Localizer(True, False)
     except rospy.ROSInterruptException:
         pass
     rospy.spin()
