@@ -29,6 +29,7 @@ import copy
 import time
 import fast_utils
 import matplotlib.pyplot as plt
+import tfpub
 
 def time_millis():
     return time.time()*1000
@@ -152,7 +153,7 @@ class Localizer(object):
         self.odom = rospy.Subscriber(ODOM_TOPIC, Odometry, self.odometry_callback)
         self.pub_particles = rospy.Publisher('~particles', PoseArray, queue_size=1)
         self.pub_guess = rospy.Publisher('~guess', PoseStamped, queue_size=1)
-        self.pub_tf = tf.TransformBroadcaster()
+        self.pub_tf = tfpub.TFPub()
         self.pub_expected_scan = rospy.Publisher('~expected_scan', LaserScan, queue_size=1)
 
         # 2D numpy array of occupancy floats in [0,1].
@@ -436,10 +437,9 @@ class Localizer(object):
         tf_xy = guess_xy - rodom_xy
         tf_yaw = diff_yaw
 
-        self.pub_tf.sendTransform(
+        self.pub_tf.Set(
             translation=(tf_xy[0], tf_xy[1], 0),
             rotation=tf.transformations.quaternion_from_euler(0, 0, tf_yaw),
-            time=rospy.Time.now(),
             child="odom",
             parent="map")
     
