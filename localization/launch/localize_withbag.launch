@@ -1,7 +1,7 @@
 <launch>
 	<param name="log_level" value="INFO"/>
-	<arg name="bagfile" default="$(env HOME)/bags/2016-03-10-02-44-50-laserloop-ntf.orig.bag --rate=0.2 --start=0" />
-	<arg name="map" default="$(find localization)/maps/lab.map.yaml" />
+	<arg name="bagfile" default="$(env HOME)/bags/simple2.bag --rate=0.5" />
+	<arg name="map" default="$(find localization)/maps/labhall.map.yaml" />
 	<!-- Playback from a rosbag. Note this does not loop. -->
 	<node pkg="rosbag" type="play" name="play" args="--clock $(arg bagfile)"/>
 
