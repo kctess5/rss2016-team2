@@ -177,7 +177,7 @@ class Localizer(object):
         self.RANDOMNESS = Delta(0.06, 0.06, 0.06)
         self.NUM_PARTICLES = 50
         # number of times per second to attempt localization
-        self.LOCALIZATION_FREQUENCY = 30.0
+        self.LOCALIZATION_FREQUENCY = 15.0
         # TODO - better initial pose management
         self.INITIAL_POSE = Particle(0.0,0,0.0)
         self.VISUALIZE = False
@@ -270,7 +270,7 @@ class Localizer(object):
 
         return Particle(x, y, heading)
 
-    def sensor_update(self, omap, scan_data, particle, method=DISTANCE_HISTOGRAM):
+    def sensor_update(self, omap, scan_data, particle, method=ANGLE_MSE):
         """Calculate weight for particles given a map and sensor data.
         Basically the likelihood of the scan_data at the location.
         Args:
@@ -338,6 +338,8 @@ class Localizer(object):
             self.expected_ranges = expected_ranges
             self.current_best_err = err
 
+        if err == 0:
+            return float("inf")
         return 1.0 / err
 
     def init_particle(self):
