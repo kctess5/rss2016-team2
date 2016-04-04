@@ -3,6 +3,7 @@ from __future__ import print_function
 import rospy
 from scipy import ndimage
 
+from visualization_driver import VisualizationDriver
 
 class FrameBuffer:
     def __init__(self, resolution=5, x_range=(-8,8), y_range=(-5,8)):
@@ -145,6 +146,31 @@ class PathGenerator(object):
         ''' Return a list of Path namedtuples for later evaluation
         '''
         pass
+
+'''
+def pick_path(self, path_candidates):
+
+        # desired_heading = self.navigation_controller.desired_heading
+
+        # if desired_heading == None:
+        #     return None
+        # else:
+        #     return Path(desired_heading, self.max_speed)
+
+        best_path = None
+        best_cost = 2500
+
+        for path in path_candidates:
+            cost = self.local_controller.evaluate_path(path)
+            cost += 220 * self.navigation_controller.evaluate_path(path)
+
+            if cost < best_cost:
+                # print("better path found:", path, cost)
+                best_path = path
+                best_cost = cost
+
+        return best_path
+'''
 
 class PathEvaluator(object):
     def __init__(self):
