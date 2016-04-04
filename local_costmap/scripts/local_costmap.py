@@ -183,11 +183,13 @@ class PathEvaluator(object):
 
 class LocalExplorer(object):
     def __init__(self):
+        # TODO inherit from controller thing
         self.PLANNING_FREQ = 40
 
         self.costmap = LocalCostmap()
         self.path_gen = PathGenerator()
         self.path_eval = PathEvaluator()
+        self.visualization_driver = VisualizationDriver()
 
         rospy.Timer(rospy.Duration(1.0 / self.PLANNING_FREQ), self.timer_callback)
 
@@ -197,14 +199,23 @@ class LocalExplorer(object):
         paths = self.path_gen.generate_paths()
         costs = self.path_eval.evaluate_paths(paths, self.costmap)
 
-        # pick best path, execute.
-        # visualize paths and costs
+        assert len(paths) == len(costs)
+
+        # TODO a different path evaluator might return the picked path directly
+        best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
+
+        # Visualizations
+        # TODO untested
+        self.visualization_driver.publish_candidate_waypoints(paths)
+        self.visualization_driver.publish_best_waypoints(best_path)
+
+        # TODO steer towards best_path.steering_angle
 
 Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
 
 if __name__ == '__main__':
     try:
-        Localizer(False, True)
+        LocalExplorer()
     except rospy.ROSInterruptException:
         pass
     rospy.spin()
