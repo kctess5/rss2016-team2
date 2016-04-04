@@ -2,7 +2,14 @@
 from __future__ import print_function
 import rospy
 from scipy import ndimage
-from nav_msgs import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid
+import collections
+import time
+from rospy.numpy_msg import numpy_msg
+from sensor_msgs.msg import LaserScan
+
+import numpy as np
+import math
 
 from visualization_driver import VisualizationDriver
 
@@ -125,20 +132,31 @@ class FrameBuffer:
     float64 w
 """
 
+def polar_to_euclid(angles, ranges):
+    y = np.cos(angles)
+    x = np.sin(angles)
+    y = y * ranges
+    x = x * ranges
+    return (x,y)
+
 class LocalCostmap(object):
     """  Generates a costmap based off of sensor data from the car, without any global sense of map """
-    def __init__(self, arg):
+    def __init__(self, VISUALIZE=False):
+
+        self.visualize = VISUALIZE
 
         # the class which manages the local costmap buffer
         self.buffer = FrameBuffer(5, (-8,8), (-5,8))
         self.first_laser_recieved = False
 
+        self.LASER_SCAN_TOPIC = '/racecar/laser/scan'
+
         self.node = rospy.init_node('icarus_main', anonymous=True)
         self.scan_subscriber = rospy.Subscriber(self.LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
 
-        self.pub_costmap = rospy.Publisher('~costmap', PoseArray, queue_size=1)
+        self.pub_costmap = rospy.Publisher('~costmap', OccupancyGrid, queue_size=1)
 
-    def filter_lasers(self, angles, ranges):
+    def filter_lasers(self, angles, ranges, range_min, range_max):
         # do nothing
         return (angles, ranges)
         # remove the data on the edges, since they are noisy
@@ -147,6 +165,7 @@ class LocalCostmap(object):
         return (angles[l:-l], ranges[l:-l])
 
     def scan_callback(self, data):
+        print ("received laser scan")
         start = time.clock()
 
         if not self.first_laser_recieved:
@@ -156,7 +175,7 @@ class LocalCostmap(object):
         laser_ranges = data.ranges
 
         laser_angles, laser_ranges  = self.filter_lasers(laser_angles, laser_ranges, data.range_min, data.range_max)
-        laser_x, laser_y =  self.polar_to_euclid(laser_angles, laser_ranges)
+        laser_x, laser_y =  polar_to_euclid(laser_angles, laser_ranges)
 
         # compute the distance transform from the laser scanner data
         self.buffer.clear()
