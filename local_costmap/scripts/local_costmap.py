@@ -2,6 +2,7 @@
 from __future__ import print_function
 import rospy
 from scipy import ndimage
+<<<<<<< HEAD
 from nav_msgs.msg import OccupancyGrid
 import collections
 import time
@@ -12,6 +13,11 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
+=======
+from nav_msgs import OccupancyGrid
+import collections
+import numpy as np
+>>>>>>> d4c7e1b3c723fdb526f538ec63ea692df16762dc
 
 from visualization_driver import VisualizationDriver
 
@@ -277,13 +283,59 @@ class LocalCostmap(object):
 
         return paths
 '''
+
 class PathGenerator(object):
+    """Generate paths to evaluate.
+    Assumes a coordinate system in which the robot is at the origin and +X is forward.
+    """
+
     def __init__(self):
         pass
+
     def generate_paths(self):
-        ''' Return a list of Path namedtuples for later evaluation
+        ''' Return a list of Path namedtuples for later evaluation.
         '''
+<<<<<<< HEAD
         return []
+=======
+        ANGLE_MAX = np.deg2rad(15)
+        ANGLE_MIN = -ANGLE_MAX
+        # How many starting angles to try.
+        ANGLE_NSAMPLES = 10
+
+        paths = [self.generate_path(angle) for angle in np.linspace(ANGLE_MIN, ANGLE_MAX, ANGLE_NSAMPLES)]
+        return paths
+
+    def generate_path(self, angle):
+        """Generate a path for a given constant steering angle.
+        This could be upgraded in the future to accomodate varying steering angles.
+        TODO it also appears to be dead wrong.
+        Returns a Path.
+        """
+        # The maximum length of a path in meters.
+        PATH_MAX_LENGTH = 2.5
+        # How long each leg of the path is in meters.
+        PATH_LEG_LENGTH = 0.1
+        FIXED_SPEED = 1.0
+
+        heading, x, y = 0., 0., 0.
+        points = []
+        # Paths start at the origin (the robot's position).
+        points.append([0., 0.])
+
+        path_leg_count = int(PATH_MAX_LENGTH / float(PATH_LEG_LENGTH))
+        print(path_leg_count)
+        for _ in xrange(path_leg_count):
+            # Simple integration. Hopefully not too bad if PATH_LEG_LENGTH is small.
+            # TODO (actually it's terrible)
+            heading += angle
+            x += np.cos(heading) * PATH_LEG_LENGTH
+            y += np.sin(heading) * PATH_LEG_LENGTH
+            points.append([x, y])
+
+        points = np.array(points)
+        return Path(steering_angle=angle, waypoints=points, speed=FIXED_SPEED)
+>>>>>>> d4c7e1b3c723fdb526f538ec63ea692df16762dc
 
 '''
 def pick_path(self, path_candidates):
@@ -353,6 +405,11 @@ class LocalExplorer(object):
         # TODO steer towards best_path.steering_angle
 
 Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
+# steering_angle is the initial steering angle of the path.
+# waypoints is 2d numpy array of shape (N, 2).
+# path.waypoints[n, 0] is the X coordinate of the nth point.
+# path.waypoints[0] is always the origin.
+
 
 if __name__ == '__main__':
     try:
