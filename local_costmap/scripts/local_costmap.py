@@ -282,8 +282,9 @@ class LocalExplorer(object):
 
         # Visualizations
         # TODO untested
-        self.visualization_driver.publish_candidate_waypoints(paths)
-        self.visualization_driver.publish_best_waypoints(best_path)
+        if self.VISUALIZE:
+            self.visualization_driver.publish_candidate_waypoints(paths)
+            self.visualization_driver.publish_best_waypoints(best_path)
 
         # TODO steer towards best_path.steering_angle
 
