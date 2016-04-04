@@ -10,6 +10,8 @@ from sensor_msgs.msg import LaserScan
 
 import numpy as np
 import math
+import matplotlib.pyplot as plt
+
 
 from visualization_driver import VisualizationDriver
 
@@ -139,6 +141,47 @@ def polar_to_euclid(angles, ranges):
     x = x * ranges
     return (x,y)
 
+# class DynamicPlot():
+
+#     def initialize(self):
+#         plt.ion()
+#         #Set up plot
+#         self.fig = plt.figure(figsize=plt.figaspect(2.))
+        
+#         self.ax0 = self.fig.add_subplot(1,2,1)
+#         self.ax1 = self.fig.add_subplot(1,2,2) 
+                                
+#         self.laser_angular, = self.ax0.plot([],[], '.')
+#         self.laser_euclid, = self.ax1.plot([],[], '.')
+        
+#         self.laser_filtered, = self.ax0.plot([],[], 'r-')
+#         self.laser_maxima, = self.ax0.plot([],[], 'wo')
+#         self.desired_heading_point, = self.ax0.plot([],[], 'ro')
+        
+#         #Autoscale on unknown axis and known lims on the other
+#         #self.ax.set_autoscaley_on(True)
+#         self.ax0.set_ylim(-1, 40)
+#         self.ax0.set_xlim(-math.pi, +math.pi)
+#         self.ax0.grid()
+        
+#         self.ax1.set_ylim(-10, 10)
+#         self.ax1.set_xlim(-10, 10)
+#         self.ax1.grid()
+    
+#     def redraw(self):
+#         #Need both of these in order to rescale
+#         self.ax0.relim()
+#         self.ax0.autoscale_view()
+        
+#         self.ax1.relim()
+#         self.ax1.autoscale_view()
+        
+#         #We need to draw *and* flush
+#         self.fig.canvas.draw()
+#         self.fig.canvas.flush_events()
+
+plt.ion()
+
 class LocalCostmap(object):
     """  Generates a costmap based off of sensor data from the car, without any global sense of map """
     def __init__(self, VISUALIZE=False):
@@ -148,6 +191,7 @@ class LocalCostmap(object):
         # the class which manages the local costmap buffer
         self.buffer = FrameBuffer(5, (-8,8), (-5,8))
         self.first_laser_recieved = False
+        self.im = None
 
         self.LASER_SCAN_TOPIC = '/racecar/laser/scan'
 
@@ -239,7 +283,7 @@ class PathGenerator(object):
     def generate_paths(self):
         ''' Return a list of Path namedtuples for later evaluation
         '''
-        pass
+        return []
 
 '''
 def pick_path(self, path_candidates):
@@ -273,7 +317,7 @@ class PathEvaluator(object):
         ''' Return cost metrics for each path. 
             The lowest cost path will be chosen for execution.
         '''
-        pass
+        return []
 
 class LocalExplorer(object):
     def __init__(self, VISUALIZE=False):
@@ -290,6 +334,7 @@ class LocalExplorer(object):
 
     def timer_callback(self, event):
         rospy.logdebug("Computing control in LocalExplorer")
+        print ("timer timer_callback")
 
         paths = self.path_gen.generate_paths()
         costs = self.path_eval.evaluate_paths(paths, self.costmap)
@@ -311,7 +356,7 @@ Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
 
 if __name__ == '__main__':
     try:
-        LocalExplorer()
+        LocalExplorer(True)
     except rospy.ROSInterruptException:
         pass
     rospy.spin()
