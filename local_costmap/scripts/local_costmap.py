@@ -2,24 +2,20 @@
 from __future__ import print_function
 import rospy
 from scipy import ndimage
-<<<<<<< HEAD
-from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid, MapMetaData
 import collections
 import time
 from rospy.numpy_msg import numpy_msg
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Header
+from geometry_msgs.msg import Point, Quaternion, Pose
 
 import numpy as np
 import math
 import matplotlib.pyplot as plt
 
-=======
-from nav_msgs import OccupancyGrid
-import collections
-import numpy as np
->>>>>>> d4c7e1b3c723fdb526f538ec63ea692df16762dc
-
 from visualization_driver import VisualizationDriver
+from car_controller.control_module import ControlModule
 
 class FrameBuffer:
     def __init__(self, resolution=5, x_range=(-8,8), y_range=(-5,8)):
@@ -32,6 +28,7 @@ class FrameBuffer:
         self.x0 = 0
         self.y0 = 0
         self.distmap = None
+        self.seq = 0
 
         self.find_center()
         self.clear()
@@ -39,6 +36,14 @@ class FrameBuffer:
     def find_center(self):
         self.x0 = abs(int(self.min_x * self.discretization))
         self.y0 = abs(int(self.min_y * self.discretization))
+
+    def world_to_ind(self, x, y):
+        if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
+            return (int(y * self.discretization) + self.y0, int(x * self.discretization) + self.x0)
+        return (None, None)
+
+    def ind_to_world(self, x_ind, y_ind):
+        return 
 
     def clear(self):
         width = (self.max_x - self.min_x) * self.discretization
@@ -66,78 +71,107 @@ class FrameBuffer:
             return self.distmap[yind + self.y0][xind + self.x0] / self.discretization
         return 1000000
 
-    def get_map(self):
+    def get_map(self, transfer_fxn):
         # return nav_msgs/OccupancyGrid of the contained buffer
-        pass
+        omap = np.copy(self.distmap)
+        it = np.nditer(omap, flags=['multi_index'], op_flags=['writeonly'])
+
+        # apply the given transfer fucntion, and return the resultant costmap
+        while not it.finished:
+            y = float(it.multi_index[0]-self.y0+2) / self.discretization * .999
+            x = float(it.multi_index[1]-self.x0+2) / self.discretization * .999
+
+            it[0] = transfer_fxn(x, y)
+
+            it.iternext()
+
+        return self.serialize_numpy_map(omap)
+
+    def serialize_numpy_map(self, omap):
+        og = OccupancyGrid()
+        
+        og.header.stamp = rospy.Time.now()
+        og.header.frame_id = "base_link"
+        og.header.seq = self.seq
+
+        og.info.origin = Pose(Point(-self.y0/self.discretization,-self.x0/self.discretization,0.0), Quaternion(0.0,0.0,0.0,1.0))
+        og.info.resolution = 1.0 / float(self.discretization) # meters/cell
+        og.info.width  = (self.max_y - self.min_y)*self.discretization # number of cells
+        og.info.height = (self.max_x - self.min_x)*self.discretization # number of cells
+
+        flat_grid = (omap.flatten(order='F')*100).clip(0,100)
+        og.data = list(np.round(flat_grid))
+        return og
+
 """
     ================================================================================
     MSG: nav_msgs/OccupancyGrid
-    # This represents a 2-D grid map, in which each cell represents the probability of
-    # occupancy.
+        # This represents a 2-D grid map, in which each cell represents the probability of
+        # occupancy.
 
-    Header header 
+        Header header 
 
-    #MetaData for the map
-    MapMetaData info
+        #MetaData for the map
+        MapMetaData info
 
-    # The map data, in row-major order, starting with (0,0).  Occupancy
-    # probabilities are in the range [0,1  Unknown is -1.
-    int8[] data
+        # The map data, in row-major order, starting with (0,0).  Occupancy
+        # probabilities are in the range [0,1  Unknown is -1.
+        int8[] data
 
     ================================================================================
     MSG: std_msgs/Header
-    # Standard metadata for higher-level stamped data types.
-    # This is generally used to communicate timestamped data 
-    # in a particular coordinate frame.
-    # 
-    # sequence ID: consecutively increasing ID 
-    uint32 seq
-    #Two-integer timestamp that is expressed as:
-    # * stamp.secs: seconds (stamp_secs) since epoch
-    # * stamp.nsecs: nanoseconds since stamp_secs
-    # time-handling sugar is provided by the client library
-    time stamp
-    #Frame this data is associated with
-    # 0: no frame
-    # 1: global frame
-    string frame_id
+        # Standard metadata for higher-level stamped data types.
+        # This is generally used to communicate timestamped data 
+        # in a particular coordinate frame.
+        # 
+        # sequence ID: consecutively increasing ID 
+        uint32 seq
+        #Two-integer timestamp that is expressed as:
+        # * stamp.secs: seconds (stamp_secs) since epoch
+        # * stamp.nsecs: nanoseconds since stamp_secs
+        # time-handling sugar is provided by the client library
+        time stamp
+        #Frame this data is associated with
+        # 0: no frame
+        # 1: global frame
+        string frame_id
 
     ================================================================================
     MSG: nav_msgs/MapMetaData
-    # This hold basic information about the characterists of the OccupancyGrid
+        # This hold basic information about the characterists of the OccupancyGrid
 
-    # The time at which the map was loaded
-    time map_load_time
-    # The map resolution [m/cell]
-    float32 resolution
-    # Map width [cells]
-    uint32 width
-    # Map height [cells]
-    uint32 height
-    # The origin of the map [m, m, rad].  This is the real-world pose of the
-    # cell (0,0) in the map.
-    geometry_msgs/Pose origin
-    ================================================================================
-    MSG: geometry_msgs/Pose
-    # A representation of pose in free space, composed of postion and orientation. 
-    Point position
-    Quaternion orientation
+        # The time at which the map was loaded
+        time map_load_time
+        # The map resolution [m/cell]
+        float32 resolution
+        # Map width [cells]
+        uint32 width
+        # Map height [cells]
+        uint32 height
+        # The origin of the map [m, m, rad].  This is the real-world pose of the
+        # cell (0,0) in the map.
+        geometry_msgs/Pose origin
+        ================================================================================
+        MSG: geometry_msgs/Pose
+        # A representation of pose in free space, composed of postion and orientation. 
+        Point position
+        Quaternion orientation
 
     ================================================================================
     MSG: geometry_msgs/Point
-    # This contains the position of a point in free space
-    float64 x
-    float64 y
-    float64 z
+        # This contains the position of a point in free space
+        float64 x
+        float64 y
+        float64 z
 
     ================================================================================
     MSG: geometry_msgs/Quaternion
-    # This represents an orientation in free space in quaternion form.
+        # This represents an orientation in free space in quaternion form.
 
-    float64 x
-    float64 y
-    float64 z
-    float64 w
+        float64 x
+        float64 y
+        float64 z
+        float64 w
 """
 
 def polar_to_euclid(angles, ranges):
@@ -147,46 +181,7 @@ def polar_to_euclid(angles, ranges):
     x = x * ranges
     return (x,y)
 
-# class DynamicPlot():
-
-#     def initialize(self):
-#         plt.ion()
-#         #Set up plot
-#         self.fig = plt.figure(figsize=plt.figaspect(2.))
-        
-#         self.ax0 = self.fig.add_subplot(1,2,1)
-#         self.ax1 = self.fig.add_subplot(1,2,2) 
-                                
-#         self.laser_angular, = self.ax0.plot([],[], '.')
-#         self.laser_euclid, = self.ax1.plot([],[], '.')
-        
-#         self.laser_filtered, = self.ax0.plot([],[], 'r-')
-#         self.laser_maxima, = self.ax0.plot([],[], 'wo')
-#         self.desired_heading_point, = self.ax0.plot([],[], 'ro')
-        
-#         #Autoscale on unknown axis and known lims on the other
-#         #self.ax.set_autoscaley_on(True)
-#         self.ax0.set_ylim(-1, 40)
-#         self.ax0.set_xlim(-math.pi, +math.pi)
-#         self.ax0.grid()
-        
-#         self.ax1.set_ylim(-10, 10)
-#         self.ax1.set_xlim(-10, 10)
-#         self.ax1.grid()
-    
-#     def redraw(self):
-#         #Need both of these in order to rescale
-#         self.ax0.relim()
-#         self.ax0.autoscale_view()
-        
-#         self.ax1.relim()
-#         self.ax1.autoscale_view()
-        
-#         #We need to draw *and* flush
-#         self.fig.canvas.draw()
-#         self.fig.canvas.flush_events()
-
-plt.ion()
+# plt.ion()
 
 class LocalCostmap(object):
     """  Generates a costmap based off of sensor data from the car, without any global sense of map """
@@ -198,13 +193,12 @@ class LocalCostmap(object):
         self.buffer = FrameBuffer(5, (-8,8), (-5,8))
         self.first_laser_recieved = False
         self.im = None
+        self.dirty = False
 
         self.LASER_SCAN_TOPIC = '/racecar/laser/scan'
-
-        self.node = rospy.init_node('icarus_main', anonymous=True)
         self.scan_subscriber = rospy.Subscriber(self.LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
 
-        self.pub_costmap = rospy.Publisher('~costmap', OccupancyGrid, queue_size=1)
+        # self.pub_costmap = rospy.Publisher('~costmap', OccupancyGrid, queue_size=1)
 
     def filter_lasers(self, angles, ranges, range_min, range_max):
         # do nothing
@@ -215,7 +209,7 @@ class LocalCostmap(object):
         return (angles[l:-l], ranges[l:-l])
 
     def scan_callback(self, data):
-        print ("received laser scan")
+        # print ("received laser scan")
         start = time.clock()
 
         if not self.first_laser_recieved:
@@ -233,20 +227,34 @@ class LocalCostmap(object):
             self.buffer.add_sample(x,y)
         self.buffer.dist_transform()
 
-        print ("Done computing distance map in:", time.clock() - start, "seconds")
+        # print ("Done computing distance map in:", time.clock() - start, "seconds")
 
-        if self.visualize == True:
-            if self.im == None:
-                self.im = plt.imshow(self.buffer.distmap)
-                plt.colorbar(self.im)
-            else:
-                self.im.set_array(self.buffer.distmap)
-            plt.draw()
+        # if self.visualize == True:
+        #     if self.im == None:
+        #         self.im = plt.imshow(self.buffer.distmap)
+        #         plt.colorbar(self.im)
+        #     else:
+        #         self.im.set_array(self.buffer.distmap)
+        #     plt.draw()
 
         self.first_laser_recieved = True  
+        self.mark_clean()
 
     def cost_at(self, x, y):
-        return 1.0 / self.buffer.dist_at(x, y)
+        xp = [0, 2, 10]
+        fp = [1.0, 0.1, 0]
+        return np.interp(self.buffer.dist_at(x, y), xp, fp)
+
+    # used to ensure that each costmap is only used once, to avoid wasted compute
+    def mark_clean(self):
+        self.dirty = False
+    def is_dirty(self):
+        return self.dirty
+    def mark_dirty(self):
+        self.dirty = True
+
+    def get_map(self):
+        return self.buffer.get_map(self.cost_at)
 
 '''
     def generate_candidate_paths(self):
@@ -290,103 +298,80 @@ class PathGenerator(object):
     """
 
     def __init__(self):
-        pass
+        # The maximum length of a path in meters.
+        self.PATH_LENGTH = 2
+        # How long each leg of the path is in meters.
+        self.FIXED_SPEED = 1.0
+        self.PATH_CANDIDATES = 11
+        self.MAX_CURVE = 0.35 # maximum path curvature in radians
+        self.PATH_DISCRETIZATION = 10 # number of points to evaluate for each path
+        self.WHEEL_BASE = 0.325
+
+    def radius(self, curve):
+        return self.WHEEL_BASE / np.tan(curve)
 
     def generate_paths(self):
         ''' Return a list of Path namedtuples for later evaluation.
         '''
-<<<<<<< HEAD
-        return []
-=======
-        ANGLE_MAX = np.deg2rad(15)
-        ANGLE_MIN = -ANGLE_MAX
-        # How many starting angles to try.
-        ANGLE_NSAMPLES = 10
 
-        paths = [self.generate_path(angle) for angle in np.linspace(ANGLE_MIN, ANGLE_MAX, ANGLE_NSAMPLES)]
+        curvatures = np.linspace(0, self.MAX_CURVE, num=self.PATH_CANDIDATES)
+        paths = []
+
+        ys = np.linspace(0, self.PATH_LENGTH, num=self.PATH_DISCRETIZATION)
+        xs = np.zeros(self.PATH_DISCRETIZATION)
+
+        paths.append(Path(steering_angle=0, waypoints=zip(xs,ys), speed=self.FIXED_SPEED))
+
+        for curvature in curvatures[1:]:
+            r = self.radius(curvature)
+            theta = self.PATH_LENGTH / r
+            thetas = np.linspace(0, theta, num=self.PATH_DISCRETIZATION)
+
+            ys = r * np.sin(thetas)
+            xs = r * np.cos(thetas) - r
+
+            paths.append(Path(steering_angle=curvature, waypoints=zip(xs,ys), speed=self.FIXED_SPEED))
+            paths.append(Path(steering_angle=-1*curvature, waypoints=zip(-1*xs,ys), speed=self.FIXED_SPEED))
+
         return paths
-
-    def generate_path(self, angle):
-        """Generate a path for a given constant steering angle.
-        This could be upgraded in the future to accomodate varying steering angles.
-        TODO it also appears to be dead wrong.
-        Returns a Path.
-        """
-        # The maximum length of a path in meters.
-        PATH_MAX_LENGTH = 2.5
-        # How long each leg of the path is in meters.
-        PATH_LEG_LENGTH = 0.1
-        FIXED_SPEED = 1.0
-
-        heading, x, y = 0., 0., 0.
-        points = []
-        # Paths start at the origin (the robot's position).
-        points.append([0., 0.])
-
-        path_leg_count = int(PATH_MAX_LENGTH / float(PATH_LEG_LENGTH))
-        print(path_leg_count)
-        for _ in xrange(path_leg_count):
-            # Simple integration. Hopefully not too bad if PATH_LEG_LENGTH is small.
-            # TODO (actually it's terrible)
-            heading += angle
-            x += np.cos(heading) * PATH_LEG_LENGTH
-            y += np.sin(heading) * PATH_LEG_LENGTH
-            points.append([x, y])
-
-        points = np.array(points)
-        return Path(steering_angle=angle, waypoints=points, speed=FIXED_SPEED)
->>>>>>> d4c7e1b3c723fdb526f538ec63ea692df16762dc
-
-'''
-def pick_path(self, path_candidates):
-
-        # desired_heading = self.navigation_controller.desired_heading
-
-        # if desired_heading == None:
-        #     return None
-        # else:
-        #     return Path(desired_heading, self.max_speed)
-
-        best_path = None
-        best_cost = 2500
-
-        for path in path_candidates:
-            cost = self.local_controller.evaluate_path(path)
-            cost += 220 * self.navigation_controller.evaluate_path(path)
-
-            if cost < best_cost:
-                # print("better path found:", path, cost)
-                best_path = path
-                best_cost = cost
-
-        return best_path
-'''
 
 class PathEvaluator(object):
     def __init__(self):
         pass
+    def path_cost(self, path, costmap):
+        cost = 0
+        for waypoint in path.waypoints:
+            cost += costmap.cost_at(waypoint[0], waypoint[1])
+        return cost
+
     def evaluate_paths(self, paths, costmap):
         ''' Return cost metrics for each path. 
             The lowest cost path will be chosen for execution.
         '''
-        return []
+        return [self.path_cost(i, costmap) for i in paths]
 
-class LocalExplorer(object):
+class LocalExplorer(ControlModule):
     def __init__(self, VISUALIZE=False):
+        super(LocalExplorer, self).__init__("local_costmap_explorer")
+
         # TODO inherit from controller thing
-        self.PLANNING_FREQ = 40
+        self.PLANNING_FREQ = 20
         self.VISUALIZE = VISUALIZE
         
         self.costmap = LocalCostmap(VISUALIZE)
         self.path_gen = PathGenerator()
         self.path_eval = PathEvaluator()
         self.visualization_driver = VisualizationDriver()
+        self.costmap_pub = rospy.Publisher('/map', OccupancyGrid, queue_size=1)
 
         rospy.Timer(rospy.Duration(1.0 / self.PLANNING_FREQ), self.timer_callback)
 
     def timer_callback(self, event):
+        # prevents recomputing the same control from an old costmap
+        if self.costmap.is_dirty():
+            return
+
         rospy.logdebug("Computing control in LocalExplorer")
-        print ("timer timer_callback")
 
         paths = self.path_gen.generate_paths()
         costs = self.path_eval.evaluate_paths(paths, self.costmap)
@@ -397,12 +382,19 @@ class LocalExplorer(object):
         best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
 
         # Visualizations
-        # TODO untested
         if self.VISUALIZE:
             self.visualization_driver.publish_candidate_waypoints(paths)
             self.visualization_driver.publish_best_waypoints(best_path)
+            # print()
+            # print(self.costmap.get_map())
+            self.costmap_pub.publish(self.costmap.get_map())
 
-        # TODO steer towards best_path.steering_angle
+        control_msg = self.make_message("direct_drive")
+        control_msg.drive_msg.speed = best_path.speed
+        control_msg.drive_msg.steering_angle = best_path.steering_angle
+
+        self.control_pub.publish(control_msg)
+        self.costmap.mark_dirty()
 
 Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
 # steering_angle is the initial steering angle of the path.
