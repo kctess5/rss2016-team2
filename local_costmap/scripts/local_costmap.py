@@ -10,6 +10,8 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Header
 from geometry_msgs.msg import Point, Quaternion, Pose
 
+from helper_functions import nondeterministic_weighted_index
+
 import numpy as np
 import math
 import matplotlib.pyplot as plt
@@ -428,8 +430,11 @@ class LocalExplorer(ControlModule):
             return self.back_up()
             # best_path = Path(steering_angle=0, waypoints=[], speed=0)
         else:
-            best_path = min(viable_paths, key=lambda p: p[0])[1]
-
+            #best_path = min(viable_paths, key=lambda p: p[0])[1]
+            # tries out choosing path by inverse of cost
+            weights = [1./(path[0]+.01) for path in viable_paths]
+            i = nondeterministic_weighted_index(weights)
+            best_path = viable_paths[i][1]
             # TODO a different path evaluator might return the picked path directly
             # best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
 
