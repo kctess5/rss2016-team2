@@ -10,7 +10,7 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Header
 from geometry_msgs.msg import Point, Quaternion, Pose
 
-from helper_functions import nondeterministic_weighted_index
+from helper_functions import nondeterministic_weighted_index, exploration_weighted_index
 
 import numpy as np
 import math
@@ -18,6 +18,15 @@ import matplotlib.pyplot as plt
 
 from visualization_driver import VisualizationDriver
 from car_controller.control_module import ControlModule
+
+# Path picker algo flags
+MIN_COST_PICK = 0
+COST_WEIGHTED_PROB = 1
+COST_WEIGHTED_PROB_TUNABLE = 2
+
+# The exploration parameter for COST_WEIGHTED_PROB_TUNABLE method
+EXPLORATION_LEVEL = 1 # default: performs the same as COST_WEIGHTED_PROB
+INIT_ALPHA = 1./EXPLORATION_LEVEL
 
 class FrameBuffer:
     # bins/meter, (meters), (meters)
@@ -383,6 +392,9 @@ class LocalExplorer(ControlModule):
         self.visualization_driver = VisualizationDriver()
         self.costmap_pub = rospy.Publisher('/map', OccupancyGrid, queue_size=1)
 
+	self.path_pick = COST_WEIGHTED_PROB_TUNABLE # play with this
+	self.alpha = INIT_ALPHA # exploration param, also play with this
+
         rospy.Timer(rospy.Duration(1.0 / self.PLANNING_FREQ), self.timer_callback)
 
     def start_backing_up(self):
@@ -430,13 +442,19 @@ class LocalExplorer(ControlModule):
             return self.back_up()
             # best_path = Path(steering_angle=0, waypoints=[], speed=0)
         else:
-            #best_path = min(viable_paths, key=lambda p: p[0])[1]
-            # tries out choosing path by inverse of cost
-            weights = [1./(path[0]+.01) for path in viable_paths]
-            i = nondeterministic_weighted_index(weights)
-            best_path = viable_paths[i][1]
+            if self.path_pick == MIN_COST_PICK:
             # TODO a different path evaluator might return the picked path directly
-            # best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
+                best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
+                # best_path = min(viable_paths, key=lambda p: p[0])[1]
+            else:
+                weights = [1./(path[0]+.01) for path in viable_paths]
+                if self.path_pick == COST_WEIGHTED_PROB:
+                    # tries out choosing path by inverse of cost
+                    i = nondeterministic_weighted_index(weights)
+                elif self.path_pick == COST_WEIGHTED_PROB_TUNABLE:
+                    # Introduces tunable exploration parameter (alpha)
+                    i = exploration_weighted_index(weights, self.alpha)
+                best_path = viable_paths[i][1]
 
         # Visualizations
         if self.VISUALIZE:

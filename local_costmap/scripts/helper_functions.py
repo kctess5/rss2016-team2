@@ -12,3 +12,6 @@ def nondeterministic_weighted_index(weights):
     X = uniform(0.,cdf[-1])
     return bisect(cdf, X)
 
+def exploration_weighted_index(weights, alpha):
+	weights = [w**(alpha) for w in weights]
+	return nondeterministic_weighted_index(weights)
