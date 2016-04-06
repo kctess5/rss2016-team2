@@ -18,6 +18,7 @@ from visualization_driver import VisualizationDriver
 from car_controller.control_module import ControlModule
 
 class FrameBuffer:
+    # bins/meter, (meters), (meters)
     def __init__(self, resolution=5, x_range=(-8,8), y_range=(-5,8)):
         self.discretization = resolution # bins per meter
         self.max_x = x_range[1]
@@ -91,7 +92,7 @@ class FrameBuffer:
         og = OccupancyGrid()
         
         og.header.stamp = rospy.Time.now()
-        og.header.frame_id = "base_link"
+        og.header.frame_id = "laser"
         og.header.seq = self.seq
 
         og.info.origin = Pose(Point(-self.y0/self.discretization,-self.x0/self.discretization,0.0), Quaternion(0.0,0.0,0.0,1.0))
@@ -190,19 +191,21 @@ class LocalCostmap(object):
         self.visualize = VISUALIZE
 
         # the class which manages the local costmap buffer
-        self.buffer = FrameBuffer(5, (-8,8), (-5,8))
+        # bins/meter, (meters), (meters)
+        self.buffer = FrameBuffer(10, (-4,4), (-1,6))
         self.first_laser_recieved = False
         self.im = None
         self.dirty = False
 
-        self.LASER_SCAN_TOPIC = '/racecar/laser/scan'
+        # self.LASER_SCAN_TOPIC = '/racecar/laser/scan'
+        self.LASER_SCAN_TOPIC = '/scan'
         self.scan_subscriber = rospy.Subscriber(self.LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
 
         # self.pub_costmap = rospy.Publisher('~costmap', OccupancyGrid, queue_size=1)
 
     def filter_lasers(self, angles, ranges, range_min, range_max):
         # do nothing
-        return (angles, ranges)
+        # return (angles, ranges)
         # remove the data on the edges, since they are noisy
         l = round(angles.shape[0] / 10)
         
@@ -241,9 +244,9 @@ class LocalCostmap(object):
         self.mark_clean()
 
     def cost_at(self, x, y):
-        xp = [0, 2, 10]
+        xp = [0, 0.5, 10]
         fp = [1.0, 0.1, 0]
-        return np.interp(self.buffer.dist_at(x, y), xp, fp)
+        return np.interp(self.buffer.dist_at(x, y), xp, fp)*np.interp(self.buffer.dist_at(x, y), xp, fp)
 
     # used to ensure that each costmap is only used once, to avoid wasted compute
     def mark_clean(self):
@@ -299,11 +302,11 @@ class PathGenerator(object):
 
     def __init__(self):
         # The maximum length of a path in meters.
-        self.PATH_LENGTH = 2
+        self.PATH_LENGTH = 1
         # How long each leg of the path is in meters.
-        self.FIXED_SPEED = 1.0
+        self.FIXED_SPEED = 0.6
         self.PATH_CANDIDATES = 11
-        self.MAX_CURVE = 0.35 # maximum path curvature in radians
+        self.MAX_CURVE = 0.4 # maximum path curvature in radians
         self.PATH_DISCRETIZATION = 10 # number of points to evaluate for each path
         self.WHEEL_BASE = 0.325
 
@@ -320,7 +323,7 @@ class PathGenerator(object):
         ys = np.linspace(0, self.PATH_LENGTH, num=self.PATH_DISCRETIZATION)
         xs = np.zeros(self.PATH_DISCRETIZATION)
 
-        paths.append(Path(steering_angle=0, waypoints=zip(xs,ys), speed=self.FIXED_SPEED))
+        paths.append(Path(steering_angle=0, waypoints=zip(xs,ys)[1:], speed=self.FIXED_SPEED))
 
         for curvature in curvatures[1:]:
             r = self.radius(curvature)
@@ -330,18 +333,28 @@ class PathGenerator(object):
             ys = r * np.sin(thetas)
             xs = r * np.cos(thetas) - r
 
-            paths.append(Path(steering_angle=curvature, waypoints=zip(xs,ys), speed=self.FIXED_SPEED))
-            paths.append(Path(steering_angle=-1*curvature, waypoints=zip(-1*xs,ys), speed=self.FIXED_SPEED))
+            paths.append(Path(steering_angle=-1*curvature, waypoints=zip(xs,ys)[1:], speed=self.FIXED_SPEED))
+            paths.append(Path(steering_angle=curvature, waypoints=zip(-1*xs,ys)[1:], speed=self.FIXED_SPEED))
 
         return paths
 
 class PathEvaluator(object):
     def __init__(self):
+        self.IMPASSIBLE_THRESHOLD = 0.8
         pass
     def path_cost(self, path, costmap):
         cost = 0
+        impassible = 0
+        # print (path.waypoints[0], path.waypoints[1])
         for waypoint in path.waypoints:
-            cost += costmap.cost_at(waypoint[0], waypoint[1])
+            c = costmap.cost_at(waypoint[0], waypoint[1])
+            # print(c)
+            if c > self.IMPASSIBLE_THRESHOLD:
+                impassible += 1
+            cost += c
+        # print (impassible)
+        if impassible >= 1:
+            return None
         return cost
 
     def evaluate_paths(self, paths, costmap):
@@ -355,8 +368,12 @@ class LocalExplorer(ControlModule):
         super(LocalExplorer, self).__init__("local_costmap_explorer")
 
         # TODO inherit from controller thing
-        self.PLANNING_FREQ = 20
+        self.PLANNING_FREQ = 8
         self.VISUALIZE = VISUALIZE
+        self.BACKUP_SPEED = 0.5
+        self.BACKUP_DURATION = 1.0
+
+        self.started_backup = 0
         
         self.costmap = LocalCostmap(VISUALIZE)
         self.path_gen = PathGenerator()
@@ -366,11 +383,30 @@ class LocalExplorer(ControlModule):
 
         rospy.Timer(rospy.Duration(1.0 / self.PLANNING_FREQ), self.timer_callback)
 
+    def start_backing_up(self):
+        self.started_backup = time.time()
+
+    def is_backing_up(self):
+        return abs(time.time() - self.started_backup) < self.BACKUP_DURATION
+
+    def back_up(self):
+        control_msg = self.make_message("direct_drive")
+        control_msg.drive_msg.speed = -1 * self.BACKUP_SPEED
+        control_msg.drive_msg.steering_angle = 0
+
+        self.control_pub.publish(control_msg)
+        self.costmap.mark_dirty()
+
     def timer_callback(self, event):
         # prevents recomputing the same control from an old costmap
         if self.costmap.is_dirty():
+            print("dirty costmap")
             return
 
+        if self.is_backing_up():
+            return self.back_up()
+
+        # print("timer timer_callback")
         rospy.logdebug("Computing control in LocalExplorer")
 
         paths = self.path_gen.generate_paths()
@@ -378,8 +414,24 @@ class LocalExplorer(ControlModule):
 
         assert len(paths) == len(costs)
 
-        # TODO a different path evaluator might return the picked path directly
-        best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
+        # best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
+
+        viable_paths = []
+        for i in xrange(len(costs)):
+            if not costs[i] == None:
+                viable_paths.append((costs[i], paths[i]))
+
+        print(len(viable_paths), "viable paths")
+
+        if len(viable_paths) == 0:
+            self.start_backing_up()
+            return self.back_up()
+            # best_path = Path(steering_angle=0, waypoints=[], speed=0)
+        else:
+            best_path = min(viable_paths, key=lambda p: p[0])[1]
+
+            # TODO a different path evaluator might return the picked path directly
+            # best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
 
         # Visualizations
         if self.VISUALIZE:
