@@ -105,8 +105,8 @@ class VisualizationDriver():
             marker.id = pathID * 100 + w;
             marker.type = 2;
             marker.action = 0;
-            marker.pose.position.x = waypoint[1];
-            marker.pose.position.y = waypoint[0];
+            marker.pose.position.x = waypoint[0];
+            marker.pose.position.y = waypoint[1];
             marker.pose.position.z = 0;
             marker.scale.x = markerSize;
             marker.scale.y = markerSize;

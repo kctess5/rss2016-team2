@@ -12,6 +12,8 @@ from geometry_msgs.msg import Point, Quaternion, Pose
 
 from helper_functions import nondeterministic_weighted_index, exploration_weighted_index
 import whoami
+import pathlib
+from pathlib import Path
 
 import numpy as np
 import math
@@ -315,33 +317,50 @@ class PathGenerator(object):
         self.PATH_DISCRETIZATION = param("path_discretization") # num points to evaluate for each path
         self.WHEEL_BASE = param("wheel_base")
 
-    def radius(self, curve):
-        return self.WHEEL_BASE / np.tan(curve)
-
     def generate_paths(self):
-        ''' Return a list of Path namedtuples for later evaluation.
-        '''
+        # Return only one simple candidate path.
+        # path = pathlib.path_constant_curve(
+        #     wheel_base=self.WHEEL_BASE,
+        #     steering_angle=.1,
+        #     travel_distance=self.PATH_LENGTH, npoints=self.PATH_DISCRETIZATION,
+        #     start_x=0, start_y=0, start_heading=0)
+        # return [path]
 
-        curvatures = np.linspace(0, self.MAX_CURVE, num=self.PATH_CANDIDATES)
-        paths = []
-
-        ys = np.linspace(0, self.PATH_LENGTH, num=self.PATH_DISCRETIZATION)
-        xs = np.zeros(self.PATH_DISCRETIZATION)
-
-        paths.append(Path(steering_angle=0, waypoints=zip(xs,ys)[1:], speed=self.FIXED_SPEED))
-
-        for curvature in curvatures[1:]:
-            r = self.radius(curvature)
-            theta = self.PATH_LENGTH / r
-            thetas = np.linspace(0, theta, num=self.PATH_DISCRETIZATION)
-
-            ys = r * np.sin(thetas)
-            xs = r * np.cos(thetas) - r
-
-            paths.append(Path(steering_angle=-1*curvature, waypoints=zip(xs,ys)[1:], speed=self.FIXED_SPEED))
-            paths.append(Path(steering_angle=curvature, waypoints=zip(-1*xs,ys)[1:], speed=self.FIXED_SPEED))
-
+        steering_angle_max = self.MAX_CURVE
+        paths = pathlib.paths_fan(
+            wheel_base=self.WHEEL_BASE,
+            steering_angle_min=-steering_angle_max, steering_angle_max=steering_angle_max,
+            npaths=10, travel_distance=self.PATH_LENGTH, npoints_perpath=self.PATH_DISCRETIZATION,
+            start_x=0, start_y=0, start_heading=0)
         return paths
+
+    # def radius(self, curve):
+    #     return self.WHEEL_BASE / np.tan(curve)
+
+    # def generate_paths(self):
+    #     ''' Return a list of Path namedtuples for later evaluation.
+    #     '''
+
+    #     curvatures = np.linspace(0, self.MAX_CURVE, num=self.PATH_CANDIDATES)
+    #     paths = []
+
+    #     ys = np.linspace(0, self.PATH_LENGTH, num=self.PATH_DISCRETIZATION)
+    #     xs = np.zeros(self.PATH_DISCRETIZATION)
+
+    #     paths.append(Path(steering_angle=0, waypoints=zip(xs,ys)[1:], speed=self.FIXED_SPEED))
+
+    #     for curvature in curvatures[1:]:
+    #         r = self.radius(curvature)
+    #         theta = self.PATH_LENGTH / r
+    #         thetas = np.linspace(0, theta, num=self.PATH_DISCRETIZATION)
+
+    #         ys = r * np.sin(thetas)
+    #         xs = r * np.cos(thetas) - r
+
+    #         paths.append(Path(steering_angle=-1*curvature, waypoints=zip(xs,ys)[1:], speed=self.FIXED_SPEED))
+    #         paths.append(Path(steering_angle=curvature, waypoints=zip(-1*xs,ys)[1:], speed=self.FIXED_SPEED))
+
+    #     return paths
 
 class PathEvaluator(object):
     def __init__(self):
@@ -477,12 +496,6 @@ class LocalExplorer(ControlModule):
         control_msg.drive_msg.speed = 0
         control_msg.drive_msg.steering_angle = 0
         self.control_pub.publish(control_msg)
-
-Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
-# steering_angle is the initial steering angle of the path.
-# waypoints is 2d numpy array of shape (N, 2).
-# path.waypoints[n, 0] is the X coordinate of the nth point.
-# path.waypoints[0] is always the origin.
 
 
 if __name__ == '__main__':
