@@ -21,8 +21,8 @@ def is_vm():
     hostname = platform.node()
     return (hostname == "racecar-vm")
 
-def is_corys_vm():
-    """Whether this is running on cory's VM."""
+def is_coreys_vm():
+    """Whether this is running on corey's VM."""
     i3 = _run_quietly(["pgrep", "i3bar"]) == 0
     milesfile = _run_quietly(["stat", "/home/racecar/.ismiles"]) == 0
     return bool(i3 and not milesfile)
@@ -42,5 +42,5 @@ def _run_quietly(shell_args):
 if __name__ == "__main__":
     print "is_racecar", is_racecar()
     print "is_vm", is_vm()
-    print "is_corys_vm", is_corys_vm()
+    print "is_coreys_vm", is_coreys_vm()
     print "is_miless_vm", is_miless_vm()

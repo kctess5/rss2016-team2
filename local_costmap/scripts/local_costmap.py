@@ -488,7 +488,7 @@ Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
 
 if __name__ == '__main__':
     try:
-        LocalExplorer(not whoami.is_miless_vm())
+        LocalExplorer(whoami.is_coreys_vm())
     except rospy.ROSInterruptException:
         pass
     rospy.spin()
