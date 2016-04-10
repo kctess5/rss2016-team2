@@ -11,6 +11,7 @@ from std_msgs.msg import Header
 from geometry_msgs.msg import Point, Quaternion, Pose
 
 from helper_functions import nondeterministic_weighted_index, exploration_weighted_index
+import whoami
 
 import numpy as np
 import math
@@ -208,8 +209,7 @@ class LocalCostmap(object):
         self.im = None
         self.dirty = False
 
-        # self.LASER_SCAN_TOPIC = '/racecar/laser/scan'
-        self.LASER_SCAN_TOPIC = '/scan'
+        self.LASER_SCAN_TOPIC = "/scan" if whoami.is_racecar() else "/racecar/laser/scan"
         self.scan_subscriber = rospy.Subscriber(self.LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
 
         # self.pub_costmap = rospy.Publisher('~costmap', OccupancyGrid, queue_size=1)
@@ -488,7 +488,7 @@ Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
 
 if __name__ == '__main__':
     try:
-        LocalExplorer(True)
+        LocalExplorer(not whoami.is_miless_vm())
     except rospy.ROSInterruptException:
         pass
     rospy.spin()
