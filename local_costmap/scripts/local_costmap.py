@@ -20,14 +20,8 @@ import matplotlib.pyplot as plt
 from visualization_driver import VisualizationDriver
 from car_controller.control_module import ControlModule
 
-# Path picker algo flags
-MIN_COST_PICK = 0
-COST_WEIGHTED_PROB = 1
-COST_WEIGHTED_PROB_TUNABLE = 2
-
-# The exploration parameter for COST_WEIGHTED_PROB_TUNABLE method
-EXPLORATION_LEVEL = 1 # default: performs the same as COST_WEIGHTED_PROB
-INIT_ALPHA = 1./EXPLORATION_LEVEL
+def param(name):
+    return rospy.get_param("/local_costmap/" + name)
 
 class FrameBuffer:
     # bins/meter, (meters), (meters)
@@ -313,13 +307,13 @@ class PathGenerator(object):
 
     def __init__(self):
         # The maximum length of a path in meters.
-        self.PATH_LENGTH = 1
+        self.PATH_LENGTH = param("max_path_length")
         # How long each leg of the path is in meters.
-        self.FIXED_SPEED = 0.6
-        self.PATH_CANDIDATES = 11
-        self.MAX_CURVE = 0.4 # maximum path curvature in radians
-        self.PATH_DISCRETIZATION = 10 # number of points to evaluate for each path
-        self.WHEEL_BASE = 0.325
+        self.FIXED_SPEED = param("fixed_speed")
+        self.PATH_CANDIDATES = param("path_candidates")
+        self.MAX_CURVE = param("max_curve") # maximum path curvature in radians
+        self.PATH_DISCRETIZATION = param("path_discretization") # num points to evaluate for each path
+        self.WHEEL_BASE = param("wheel_base")
 
     def radius(self, curve):
         return self.WHEEL_BASE / np.tan(curve)
@@ -351,7 +345,7 @@ class PathGenerator(object):
 
 class PathEvaluator(object):
     def __init__(self):
-        self.IMPASSIBLE_THRESHOLD = 0.8
+        self.IMPASSIBLE_THRESHOLD = param("impassible_threshold")
         pass
     def path_cost(self, path, costmap):
         cost = 0
@@ -379,10 +373,15 @@ class LocalExplorer(ControlModule):
         super(LocalExplorer, self).__init__("local_costmap_explorer")
 
         # TODO inherit from controller thing
-        self.PLANNING_FREQ = 8
+        self.PLANNING_FREQ = param("planning_freq")
         self.VISUALIZE = VISUALIZE
-        self.BACKUP_SPEED = 0.5
-        self.BACKUP_DURATION = 1.0
+        self.BACKUP_SPEED = param("backup_speed")
+        self.BACKUP_DURATION = param("backup_duration")
+
+        self.MIN_COST_PICK = param("min_cost_pick")
+        self.COST_WEIGHTED_PROB = param("cost_weighted_prob")
+        self.COST_WEIGHTED_PROB_TUNABLE = param("cost_weighted_prob_tunable")
+        self.INIT_ALPHA = 1./param("exploration_level")
 
         self.started_backup = 0
         
@@ -392,8 +391,8 @@ class LocalExplorer(ControlModule):
         self.visualization_driver = VisualizationDriver()
         self.costmap_pub = rospy.Publisher('/map', OccupancyGrid, queue_size=1)
 
-	self.path_pick = COST_WEIGHTED_PROB_TUNABLE # play with this
-	self.alpha = INIT_ALPHA # exploration param, also play with this
+	self.path_pick = self.COST_WEIGHTED_PROB_TUNABLE # play with this
+	self.alpha = self.INIT_ALPHA # exploration param, also play with this
 
         rospy.Timer(rospy.Duration(1.0 / self.PLANNING_FREQ), self.timer_callback)
         rospy.on_shutdown(lambda: self.on_shutdown())
@@ -443,16 +442,16 @@ class LocalExplorer(ControlModule):
             return self.back_up()
             # best_path = Path(steering_angle=0, waypoints=[], speed=0)
         else:
-            if self.path_pick == MIN_COST_PICK:
+            if self.path_pick == self.MIN_COST_PICK:
             # TODO a different path evaluator might return the picked path directly
                 best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
                 # best_path = min(viable_paths, key=lambda p: p[0])[1]
             else:
                 weights = [1./(path[0]+.01) for path in viable_paths]
-                if self.path_pick == COST_WEIGHTED_PROB:
+                if self.path_pick == self.COST_WEIGHTED_PROB:
                     # tries out choosing path by inverse of cost
                     i = nondeterministic_weighted_index(weights)
-                elif self.path_pick == COST_WEIGHTED_PROB_TUNABLE:
+                elif self.path_pick == self.COST_WEIGHTED_PROB_TUNABLE:
                     # Introduces tunable exploration parameter (alpha)
                     i = exploration_weighted_index(weights, self.alpha)
                 best_path = viable_paths[i][1]
@@ -488,7 +487,8 @@ Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
 
 if __name__ == '__main__':
     try:
-        LocalExplorer(whoami.is_coreys_vm())
+        viz = param("corey_vm_visualize") if whoami.is_coreys_vm() else param("visualize")
+        LocalExplorer(viz)
     except rospy.ROSInterruptException:
         pass
     rospy.spin()

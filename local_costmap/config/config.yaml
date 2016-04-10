@@ -1,0 +1,28 @@
+---
+# System flags
+visualize: false
+corey_vm_visualize: true
+
+# Local Explorer flags
+planning_freq: 8
+backup_speed: 0.5
+backup_duration: 1.0
+
+# Path Picker (in LocalExplorer) flags
+min_cost_pick: 0
+cost_weighted_prob: 1
+cost_weighted_prob_tunable: 2
+# The exploration parameter for cost_weighted_prob_tunable method
+exploration_level: 1 # default: perform the same as cost_weighted_prob
+
+# Path Generator flags
+max_path_length: 1 # meters
+fixed_speed: 0.6
+path_candidates: 11
+max_curve: 0.4
+path_discretization: 10
+wheel_base: 0.325
+
+# Path Evaluator flags
+impassible_threshold: 0.8
+...
