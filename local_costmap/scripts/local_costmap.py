@@ -396,6 +396,7 @@ class LocalExplorer(ControlModule):
 	self.alpha = INIT_ALPHA # exploration param, also play with this
 
         rospy.Timer(rospy.Duration(1.0 / self.PLANNING_FREQ), self.timer_callback)
+        rospy.on_shutdown(lambda: self.on_shutdown())
 
     def start_backing_up(self):
         self.started_backup = time.time()
@@ -470,6 +471,13 @@ class LocalExplorer(ControlModule):
 
         self.control_pub.publish(control_msg)
         self.costmap.mark_dirty()
+
+    def on_shutdown(self):
+        """Stop the car."""
+        control_msg = self.make_message("direct_drive")
+        control_msg.drive_msg.speed = 0
+        control_msg.drive_msg.steering_angle = 0
+        self.control_pub.publish(control_msg)
 
 Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
 # steering_angle is the initial steering angle of the path.
