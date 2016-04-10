@@ -4,8 +4,9 @@
 	<node pkg="tf" type="static_transform_publisher" name="hokuyo_link_broadcaster"
 		args="0 0 0 0 0 0 1 /base_link /hokuyo_link 50" />
 
-
 	<node name="local_explorer" pkg="local_costmap" type="local_costmap.py" output="screen">
 	  <!-- <param name="~scan" value="/scan_clipped" /> -->
 	</node>
+
+	<!-- <include file="$(find car_controller)/launch/car.launch" /> -->
 </launch>
