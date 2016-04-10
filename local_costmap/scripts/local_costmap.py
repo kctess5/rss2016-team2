@@ -98,7 +98,7 @@ class FrameBuffer:
         og = OccupancyGrid()
         
         og.header.stamp = rospy.Time.now()
-        og.header.frame_id = "laser"
+        og.header.frame_id = "hokuyo_link"
         og.header.seq = self.seq
 
         og.info.origin = Pose(Point(-self.y0/self.discretization,-self.x0/self.discretization,0.0), Quaternion(0.0,0.0,0.0,1.0))
