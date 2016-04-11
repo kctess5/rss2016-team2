@@ -29,14 +29,14 @@ class VisualizationDriver():
         self.desired_steering_pub = rospy.Publisher('desired_steering', Marker, queue_size=10)
 
     # Specific Functions
-    def publish_candidate_waypoints(self, candidate_paths):
+    def publish_candidate_waypoints(self, candidate_paths, costmap=None):
         c = 0
         for path in candidate_paths:
             c = c + 1;
-            self.publish_waypoints(path, c, 0, 1 , 0, 0.10, self.candidate_waypoints_pub);
+            self.publish_waypoints(path, c, 0, 1 , 0, 0.10, self.candidate_waypoints_pub, costmap=costmap);
 
-    def publish_best_waypoints(self, best_path):
-        self.publish_waypoints(best_path, 100, 1, 0 , 0, 0.25, self.best_waypoints_pub);
+    def publish_best_waypoints(self, best_path, costmap=None):
+        self.publish_waypoints(best_path, 100, 1, 0 , 0, 0.25, self.best_waypoints_pub, costmap=costmap);
 
     def publish_desired_heading(self, heading):
         marker = Marker();
@@ -94,7 +94,7 @@ class VisualizationDriver():
         marker.color.b = 1;
         self.desired_steering_pub.publish(marker)
 
-    def publish_waypoints(self, path, pathID, colorr, colorg, colorb, markerSize, publisher):
+    def publish_waypoints(self, path, pathID, colorr, colorg, colorb, markerSize, publisher, costmap=None):
         # # Assigning unique ID is key for displaying the right amount of points on rviz
         w = 0;
         for waypoint in path.waypoints:
@@ -108,9 +108,15 @@ class VisualizationDriver():
             marker.pose.position.x = waypoint[0];
             marker.pose.position.y = waypoint[1];
             marker.pose.position.z = 0;
-            marker.scale.x = markerSize;
-            marker.scale.y = markerSize;
-            marker.scale.z = markerSize;
+            if costmap == None:
+                size = markerSize
+            else:
+                x, y = waypoint[0], waypoint[1]
+                factor = costmap.cost_at(waypoint[0], waypoint[1])
+                size = markerSize * (.3 + factor)
+            marker.scale.x = size;
+            marker.scale.y = size;
+            marker.scale.z = size;
             marker.color.a = 1.0;
             marker.color.r = colorr;
             marker.color.g = colorg;

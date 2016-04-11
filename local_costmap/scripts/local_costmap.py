@@ -3,6 +3,7 @@ from __future__ import print_function
 import rospy
 from scipy import ndimage
 from nav_msgs.msg import OccupancyGrid, MapMetaData
+import tf.transformations
 import collections
 import time
 from rospy.numpy_msg import numpy_msg
@@ -27,7 +28,7 @@ def param(name):
 
 class FrameBuffer:
     # bins/meter, (meters), (meters)
-    def __init__(self, resolution=5, x_range=(-8,8), y_range=(-5,8)):
+    def __init__(self, resolution=10, x_range=(-1,6), y_range=(-4,4)):
         self.discretization = resolution # bins per meter
         self.max_x = x_range[1]
         self.max_y = y_range[1]
@@ -59,17 +60,17 @@ class FrameBuffer:
         width = (self.max_x - self.min_x) * self.discretization
         height = (self.max_y - self.min_y) * self.discretization
 
-        # self.buffer = np.ones((width, height))
-        self.buffer = np.ones((height, width))
+        self.buffer = np.ones((width, height))
 
     def add_sample(self, x, y):
         # Ghetto miles-is-confused transform
-        x, y = y, x
+        # x, y = y, x
+
         if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
             xind = int(x * self.discretization)
             yind = int(y * self.discretization)
             # add obstacle to the buffer
-            self.buffer[yind + self.y0][xind + self.x0] = False
+            self.buffer[xind + self.x0][yind + self.y0] = False
 
     def dist_transform(self):
         # Show a stripe to visualize coordinate system.
@@ -81,11 +82,14 @@ class FrameBuffer:
         return self.distmap
 
     def dist_at(self, x, y):
+        # Ghetto miles-is-confused transform
+        # x, y = y, x
+
         if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y) and not self.distmap == None:
             xind = int(x * self.discretization)
             yind = int(y * self.discretization)
             # add obstacle to the buffer
-            return self.distmap[yind + self.y0][xind + self.x0] / self.discretization
+            return self.distmap[xind + self.x0][yind + self.y0] / self.discretization
         return 1000000
 
     def get_map(self, transfer_fxn):
@@ -93,10 +97,10 @@ class FrameBuffer:
         omap = np.copy(self.distmap)
         it = np.nditer(omap, flags=['multi_index'], op_flags=['writeonly'])
 
-        # apply the given transfer fucntion, and return the resultant costmap
+        # apply the given transfer function, and return the resultant costmap
         while not it.finished:
-            y = float(it.multi_index[0]-self.y0+2) / self.discretization * .999
-            x = float(it.multi_index[1]-self.x0+2) / self.discretization * .999
+            x = float(it.multi_index[0]-self.x0+2) / self.discretization * .999
+            y = float(it.multi_index[1]-self.y0+2) / self.discretization * .999
 
             it[0] = transfer_fxn(x, y)
 
@@ -111,10 +115,11 @@ class FrameBuffer:
         og.header.frame_id = "base_link"
         og.header.seq = self.seq
 
-        og.info.origin = Pose(Point(-self.y0/self.discretization,-self.x0/self.discretization,0.0), Quaternion(0.0,0.0,0.0,1.0))
+        origin = Point(-self.x0/self.discretization, -self.y0/self.discretization, 0.0)
+        og.info.origin = Pose(origin, angle_to_quaternion(0))
         og.info.resolution = 1.0 / float(self.discretization) # meters/cell
-        og.info.width  = (self.max_y - self.min_y)*self.discretization # number of cells
-        og.info.height = (self.max_x - self.min_x)*self.discretization # number of cells
+        og.info.width  = (self.max_x - self.min_x)*self.discretization # number of cells
+        og.info.height = (self.max_y - self.min_y)*self.discretization # number of cells
 
         flat_grid = (omap.flatten(order='F')*100).clip(0,100)
         og.data = list(np.round(flat_grid))
@@ -208,7 +213,7 @@ class LocalCostmap(object):
 
         # the class which manages the local costmap buffer
         # bins/meter, (meters), (meters)
-        self.buffer = FrameBuffer(10, (-4,4), (-1,6))
+        self.buffer = FrameBuffer(10, (-1,6), (-4,4))
         self.first_laser_recieved = False
         self.im = None
         self.dirty = False
@@ -263,7 +268,8 @@ class LocalCostmap(object):
         # x, y = y, x
         xp = [0, 0.5, 10]
         fp = [1.0, 0.1, 0]
-        return np.interp(self.buffer.dist_at(x, y), xp, fp)*np.interp(self.buffer.dist_at(x, y), xp, fp)
+        z = np.interp(self.buffer.dist_at(x, y), xp, fp)
+        return z * z
 
     # used to ensure that each costmap is only used once, to avoid wasted compute
     def mark_clean(self):
@@ -336,13 +342,23 @@ class PathGenerator(object):
         #     start_x=0, start_y=0, start_heading=0)
         # return [path]
 
+        # Return a fan of constant curvature arcs.
         steering_angle_max = self.MAX_CURVE
         paths = pathlib.paths_fan(
             wheel_base=self.WHEEL_BASE,
             steering_angle_min=-steering_angle_max, steering_angle_max=steering_angle_max,
-            npaths=10, travel_distance=self.PATH_LENGTH, npoints_perpath=self.PATH_DISCRETIZATION,
+            npaths=10, travel_distance=2., npoints_perpath=30,
             start_x=0, start_y=0, start_heading=0)
         return paths
+
+        # Return a forking tree of paths.
+        # steering_angle_max = self.MAX_CURVE
+        # paths = pathlib.paths_forking(
+        #     wheel_base=self.WHEEL_BASE,
+        #     steering_angle_min=-steering_angle_max, steering_angle_max=steering_angle_max,
+        #     npaths=10, nfork=5, step_distance=.2, fork_distance=2.6, travel_distance=self.PATH_LENGTH,
+        #     start_x=0, start_y=0, start_heading=0)
+        # return paths
 
     # def radius(self, curve):
     #     return self.WHEEL_BASE / np.tan(curve)
@@ -420,7 +436,8 @@ class LocalExplorer(ControlModule):
         self.visualization_driver = VisualizationDriver()
         self.costmap_pub = rospy.Publisher('/map', OccupancyGrid, queue_size=1)
 
-	self.path_pick = self.COST_WEIGHTED_PROB_TUNABLE # play with this
+	# self.path_pick = self.COST_WEIGHTED_PROB_TUNABLE # play with this
+	self.path_pick = self.MIN_COST_PICK # play with this
 	self.alpha = self.INIT_ALPHA # exploration param, also play with this
 
         rospy.Timer(rospy.Duration(1.0 / self.PLANNING_FREQ), self.timer_callback)
@@ -437,7 +454,7 @@ class LocalExplorer(ControlModule):
         control_msg.drive_msg.speed = -1 * self.BACKUP_SPEED
         control_msg.drive_msg.steering_angle = 0
 
-        self.control_pub.publish(control_msg)
+        self.control_pub.publish(control_msg, queue_size=1)
         self.costmap.mark_dirty()
 
     def timer_callback(self, event):
@@ -472,9 +489,8 @@ class LocalExplorer(ControlModule):
             # best_path = Path(steering_angle=0, waypoints=[], speed=0)
         else:
             if self.path_pick == self.MIN_COST_PICK:
-            # TODO a different path evaluator might return the picked path directly
-                best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
-                # best_path = min(viable_paths, key=lambda p: p[0])[1]
+                # Choose the lowest cost of the viable paths.
+                best_path = min(viable_paths, key=lambda (cost,path): cost)[1]
             else:
                 weights = [1./(path[0]+.01) for path in viable_paths]
                 if self.path_pick == self.COST_WEIGHTED_PROB:
@@ -487,11 +503,12 @@ class LocalExplorer(ControlModule):
 
         # Visualizations
         if self.VISUALIZE:
-            self.visualization_driver.publish_candidate_waypoints(paths)
-            self.visualization_driver.publish_best_waypoints(best_path)
+            # self.visualization_driver.publish_candidate_waypoints([v[1] for v in viable_paths], costmap=self.costmap)
+            self.visualization_driver.publish_candidate_waypoints(paths, costmap=self.costmap)
+            self.visualization_driver.publish_best_waypoints(best_path, costmap=self.costmap)
             # print()
             # print(self.costmap.get_map())
-            self.costmap_pub.publish(self.costmap.get_map())
+            # self.costmap_pub.publish(self.costmap.get_map())
 
         control_msg = self.make_message("direct_drive")
         control_msg.drive_msg.speed = best_path.speed
@@ -508,10 +525,15 @@ class LocalExplorer(ControlModule):
         self.control_pub.publish(control_msg)
 
 
+def angle_to_quaternion(angle):
+    """Convert an angle in radians into a quaternion _message_."""
+    return Quaternion(*tf.transformations.quaternion_from_euler(0, 0, angle))
+
+
 if __name__ == '__main__':
     try:
         viz = param("corey_vm_visualize") if whoami.is_coreys_vm() else param("visualize")
-        LocalExplorer(viz)
+        LocalExplorer(True)
     except rospy.ROSInterruptException:
         pass
     rospy.spin()

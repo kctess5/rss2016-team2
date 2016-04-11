@@ -138,7 +138,7 @@ def paths_forking(wheel_base, steering_angle_min, steering_angle_max,
     assert(travel_distance > 0)
     assert(fork_distance > 0)
     State = collections.namedtuple("State",
-        ["steering_angle", "waypoints", "length", "last_fork"])
+        ["initial_steering_angle", "steering_angle", "waypoints", "length", "last_fork"])
     # State.waypoints is a list of waypoints.
     # A waypoint is [x, y, heading].
     # last_fork is the length at which the last fork was.
@@ -151,7 +151,7 @@ def paths_forking(wheel_base, steering_angle_min, steering_angle_max,
     # Start the first paths.
     for steering_angle in np.linspace(steering_angle_min, steering_angle_max, num=npaths):
         waypoints = np.array([[start_x, start_y, start_heading]])
-        states.append(State(steering_angle, waypoints, length=0, last_fork=0))
+        states.append(State(steering_angle, steering_angle, waypoints, length=0, last_fork=0))
 
     # Loop until all states have moved to states_done.
     while len(states):
@@ -179,7 +179,10 @@ def paths_forking(wheel_base, steering_angle_min, steering_angle_max,
                     length=state.length + step_distance)
                 states.append(state_new)
                 
-    return [state.waypoints for state in states_done]
+    return [Path(steering_angle=state.initial_steering_angle,
+                waypoints=np.array(state.waypoints),
+                speed=DEFAULT_SPEED)
+            for state in states_done]
 
 
 def rotate2d(x, y, angle):
