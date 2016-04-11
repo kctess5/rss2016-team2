@@ -72,6 +72,11 @@ class FrameBuffer:
             self.buffer[yind + self.y0][xind + self.x0] = False
 
     def dist_transform(self):
+        # Show a stripe to visualize coordinate system.
+        # self.buffer[2,:] = False
+        # self.buffer[:,10] = False
+        # self.buffer[:,20] = False
+
         self.distmap = ndimage.distance_transform_edt(self.buffer)
         return self.distmap
 
