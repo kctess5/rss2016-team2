@@ -63,9 +63,6 @@ class FrameBuffer:
         self.buffer = np.ones((width, height))
 
     def add_sample(self, x, y):
-        # Ghetto miles-is-confused transform
-        # x, y = y, x
-
         if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
             xind = int(x * self.discretization)
             yind = int(y * self.discretization)
@@ -82,9 +79,6 @@ class FrameBuffer:
         return self.distmap
 
     def dist_at(self, x, y):
-        # Ghetto miles-is-confused transform
-        # x, y = y, x
-
         if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y) and not self.distmap == None:
             xind = int(x * self.discretization)
             yind = int(y * self.discretization)
@@ -264,8 +258,6 @@ class LocalCostmap(object):
         self.mark_clean()
 
     def cost_at(self, x, y):
-        # Ghetto miles-is-confused transform
-        # x, y = y, x
         xp = [0, 0.5, 10]
         fp = [1.0, 0.1, 0]
         z = np.interp(self.buffer.dist_at(x, y), xp, fp)
