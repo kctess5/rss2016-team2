@@ -47,6 +47,7 @@ class FrameBuffer:
         self.y0 = abs(int(self.min_y * self.discretization))
 
     def world_to_ind(self, x, y):
+        """ Maybe incorrect now. """
         if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
             return (int(y * self.discretization) + self.y0, int(x * self.discretization) + self.x0)
         return (None, None)
@@ -62,6 +63,8 @@ class FrameBuffer:
         self.buffer = np.ones((height, width))
 
     def add_sample(self, x, y):
+        # Ghetto miles-is-confused transform
+        x, y = y, x
         if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
             xind = int(x * self.discretization)
             yind = int(y * self.discretization)
@@ -100,7 +103,7 @@ class FrameBuffer:
         og = OccupancyGrid()
         
         og.header.stamp = rospy.Time.now()
-        og.header.frame_id = "hokuyo_link"
+        og.header.frame_id = "base_link"
         og.header.seq = self.seq
 
         og.info.origin = Pose(Point(-self.y0/self.discretization,-self.x0/self.discretization,0.0), Quaternion(0.0,0.0,0.0,1.0))
@@ -184,10 +187,10 @@ class FrameBuffer:
 """
 
 def polar_to_euclid(angles, ranges):
-    y = np.cos(angles)
-    x = np.sin(angles)
-    y = y * ranges
+    x = np.cos(angles)
+    y = np.sin(angles)
     x = x * ranges
+    y = y * ranges
     return (x,y)
 
 # plt.ion()
@@ -251,6 +254,8 @@ class LocalCostmap(object):
         self.mark_clean()
 
     def cost_at(self, x, y):
+        # Ghetto miles-is-confused transform
+        # x, y = y, x
         xp = [0, 0.5, 10]
         fp = [1.0, 0.1, 0]
         return np.interp(self.buffer.dist_at(x, y), xp, fp)*np.interp(self.buffer.dist_at(x, y), xp, fp)
