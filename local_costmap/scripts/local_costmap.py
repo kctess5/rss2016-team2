@@ -446,7 +446,7 @@ class LocalExplorer(ControlModule):
         control_msg.drive_msg.speed = -1 * self.BACKUP_SPEED
         control_msg.drive_msg.steering_angle = 0
 
-        self.control_pub.publish(control_msg, queue_size=1)
+        self.control_pub.publish(control_msg)
         self.costmap.mark_dirty()
 
     def timer_callback(self, event):
