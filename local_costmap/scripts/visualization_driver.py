@@ -15,8 +15,10 @@
 #        self.visualization_driver.publish_desired_heading( -1 * self.desired_heading)
 
 import rospy
-from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point
+import random
+from std_msgs.msg import Header, ColorRGBA
+from visualization_msgs.msg import Marker, MarkerArray
+from geometry_msgs.msg import Point, Pose, Vector3
 import math
 
 class VisualizationDriver():
@@ -27,6 +29,9 @@ class VisualizationDriver():
         self.best_waypoints_pub = rospy.Publisher('best_waypoints', Marker, queue_size=10)
         self.desired_heading_pub = rospy.Publisher('desired_heading', Marker, queue_size=10)
         self.desired_steering_pub = rospy.Publisher('desired_steering', Marker, queue_size=10)
+
+        self.best_path_pub = rospy.Publisher('best_path', Marker, queue_size=1)
+        self.candidate_paths_pub = rospy.Publisher('candidate_paths', MarkerArray, queue_size=10)
 
     # Specific Functions
     def publish_candidate_waypoints(self, candidate_paths, costmap=None):
@@ -39,6 +44,47 @@ class VisualizationDriver():
     def publish_best_waypoints(self, best_path, costmap=None):
         self.publish_clear_all(self.best_waypoints_pub)
         self.publish_waypoints(best_path, 100, 1, 0 , 0, 0.25, self.best_waypoints_pub, costmap=costmap);
+
+    def publish_best_path(self, best_path, costmap=None):
+        marker = self.marker_from_path(best_path, z=0.1, costmap=costmap)
+        self.best_path_pub.publish(marker)
+
+    def publish_candidate_paths(self, candidate_paths, costmap=None):
+        marker_array = MarkerArray(markers=
+                                   [self.marker_from_path(path,
+                                                          index=i,
+                                                          linewidth=0.05,
+                                                          color=ColorRGBA(0, 1, 0, 1),
+                                                          costmap=costmap)
+                                    for i, path in enumerate(candidate_paths)])
+        self.candidate_paths_pub.publish(marker_array)
+
+    def marker_from_path(self, path, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., costmap=None):
+        marker = Marker()
+        marker.header = Header(
+            stamp=rospy.Time.now(),
+            frame_id="base_link")
+
+        marker.ns = "Markers_NS"
+        marker.id = index
+        marker.type = Marker.LINE_STRIP
+        marker.action = 0 # action=0 add/modify object
+        marker.color = color
+        marker.lifetime = rospy.Duration.from_sec(0.5)
+
+        marker.pose = Pose()
+        marker.pose.position.z = z
+        marker.scale = Vector3(linewidth, 1, 1)
+
+        # Fill the marker from the path.
+        points = []
+        for waypoint in path.waypoints:
+            x, y = waypoint[0], waypoint[1]
+            points.append(Point(x, y, 0))
+        marker.points = points
+        marker.colors = []
+
+        return marker
 
     def publish_desired_heading(self, heading):
         marker = Marker();

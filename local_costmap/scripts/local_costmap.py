@@ -391,6 +391,7 @@ class PathEvaluator(object):
     def __init__(self):
         self.IMPASSIBLE_THRESHOLD = param("impassible_threshold")
         pass
+
     def path_cost(self, path, costmap):
         cost = 0
         impassible = 0
@@ -510,8 +511,10 @@ class LocalExplorer(ControlModule):
             global FooSwitch
             FooSwitch = not FooSwitch
             # self.visualization_driver.publish_candidate_waypoints([v[1] for v in viable_paths], costmap=self.costmap)
-            self.visualization_driver.publish_candidate_waypoints(paths, costmap=self.costmap)
-            self.visualization_driver.publish_best_waypoints(best_path, costmap=self.costmap)
+            # self.visualization_driver.publish_candidate_waypoints(paths, costmap=self.costmap)
+            # self.visualization_driver.publish_best_waypoints(best_path, costmap=self.costmap)
+            self.visualization_driver.publish_best_path(best_path, costmap=self.costmap)
+            self.visualization_driver.publish_candidate_paths([vp[1] for vp in viable_paths], costmap=self.costmap)
             # print()
             # print(self.costmap.get_map())
             # self.costmap_pub.publish(self.costmap.get_map())
