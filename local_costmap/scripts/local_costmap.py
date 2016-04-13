@@ -335,22 +335,22 @@ class PathGenerator(object):
         # return [path]
 
         # Return a fan of constant curvature arcs.
-        steering_angle_max = self.MAX_CURVE
-        paths = pathlib.paths_fan(
-            wheel_base=self.WHEEL_BASE,
-            steering_angle_min=-steering_angle_max, steering_angle_max=steering_angle_max,
-            npaths=10, travel_distance=2., npoints_perpath=30,
-            start_x=0, start_y=0, start_heading=0)
-        return paths
-
-        # Return a forking tree of paths.
         # steering_angle_max = self.MAX_CURVE
-        # paths = pathlib.paths_forking(
+        # paths = pathlib.paths_fan(
         #     wheel_base=self.WHEEL_BASE,
         #     steering_angle_min=-steering_angle_max, steering_angle_max=steering_angle_max,
-        #     npaths=10, nfork=5, step_distance=.2, fork_distance=2.6, travel_distance=self.PATH_LENGTH,
+        #     npaths=10, travel_distance=2., npoints_perpath=30,
         #     start_x=0, start_y=0, start_heading=0)
         # return paths
+
+        # Return a forking tree of paths.
+        steering_angle_max = self.MAX_CURVE
+        paths = pathlib.paths_forking(
+            wheel_base=self.WHEEL_BASE,
+            steering_angle_min=-steering_angle_max, steering_angle_max=steering_angle_max,
+            npaths=10, nfork=4, step_distance=.1, fork_distance=1.4, travel_distance=self.PATH_LENGTH,
+            start_x=0, start_y=0, start_heading=0)
+        return paths
 
     # def radius(self, curve):
     #     return self.WHEEL_BASE / np.tan(curve)
@@ -525,7 +525,7 @@ def angle_to_quaternion(angle):
 if __name__ == '__main__':
     try:
         viz = param("corey_vm_visualize") if whoami.is_coreys_vm() else param("visualize")
-        LocalExplorer(True)
+        LocalExplorer(viz)
     except rospy.ROSInterruptException:
         pass
     rospy.spin()

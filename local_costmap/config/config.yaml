@@ -16,7 +16,7 @@ cost_weighted_prob_tunable: 2
 exploration_level: 1 # default: perform the same as cost_weighted_prob
 
 # Path Generator flags
-max_path_length: 5.0 # meters
+max_path_length: 2.7 # meters
 fixed_speed: 0.6
 path_candidates: 11
 max_curve: 0.4
@@ -24,5 +24,5 @@ path_discretization: 10
 wheel_base: 0.325
 
 # Path Evaluator flags
-impassible_threshold: 0.8
+impassible_threshold: 0.5
 ...
