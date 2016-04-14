@@ -15,13 +15,19 @@ from helper_functions import nondeterministic_weighted_index, exploration_weight
 import whoami
 import pathlib
 from pathlib import Path
+import whinytimer
 
+import threading
 import numpy as np
 import math
 import matplotlib.pyplot as plt
 
 from visualization_driver import VisualizationDriver
 from car_controller.control_module import ControlModule
+
+# Coarse lock.
+# Used to serialize incoming asynchronous actions like timers and topic subscriptions.
+FILE_LOCK = threading.RLock()
 
 def param(name):
     return rospy.get_param("/local_costmap/" + name)
@@ -213,7 +219,7 @@ class LocalCostmap(object):
         self.dirty = False
 
         self.LASER_SCAN_TOPIC = "/scan" if whoami.is_racecar() else "/racecar/laser/scan"
-        self.scan_subscriber = rospy.Subscriber(self.LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback)
+        self.scan_subscriber = rospy.Subscriber(self.LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback, queue_size=1)
 
         # self.pub_costmap = rospy.Publisher('~costmap', OccupancyGrid, queue_size=1)
 
@@ -239,10 +245,11 @@ class LocalCostmap(object):
         laser_x, laser_y =  polar_to_euclid(laser_angles, laser_ranges)
 
         # compute the distance transform from the laser scanner data
-        self.buffer.clear()
-        for x, y in zip(laser_x, laser_y):
-            self.buffer.add_sample(x,y)
-        self.buffer.dist_transform()
+        with FILE_LOCK:
+            self.buffer.clear()
+            for x, y in zip(laser_x, laser_y):
+                self.buffer.add_sample(x,y)
+            self.buffer.dist_transform()
 
         # print ("Done computing distance map in:", time.clock() - start, "seconds")
 
@@ -432,7 +439,7 @@ class LocalExplorer(ControlModule):
 	self.path_pick = self.MIN_COST_PICK # play with this
 	self.alpha = self.INIT_ALPHA # exploration param, also play with this
 
-        rospy.Timer(rospy.Duration(1.0 / self.PLANNING_FREQ), self.timer_callback)
+        whinytimer.WhinyTimer(rospy.Duration(1.0 / self.PLANNING_FREQ), self.timer_callback)
         rospy.on_shutdown(lambda: self.on_shutdown())
 
     def start_backing_up(self):
@@ -449,7 +456,11 @@ class LocalExplorer(ControlModule):
         self.control_pub.publish(control_msg)
         self.costmap.mark_dirty()
 
-    def timer_callback(self, event):
+    def timer_callback(self, event=None):
+        with FILE_LOCK:
+            self._timer_callback(event=event)
+
+    def _timer_callback(self, event=None):
         # prevents recomputing the same control from an old costmap
         if self.costmap.is_dirty():
             print("dirty costmap")

@@ -4,7 +4,7 @@ visualize: false
 corey_vm_visualize: true
 
 # Local Explorer flags
-planning_freq: 8
+planning_freq: 5
 backup_speed: 0.5
 backup_duration: 1.0
 
