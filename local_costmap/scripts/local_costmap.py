@@ -508,8 +508,6 @@ class LocalExplorer(ControlModule):
 
         # Visualizations.
         if self.VISUALIZE and self.visualize_timer.step(auto_reset=True):
-            global FooSwitch
-            FooSwitch = not FooSwitch
             # self.visualization_driver.publish_candidate_waypoints([v[1] for v in viable_paths], costmap=self.costmap)
             # self.visualization_driver.publish_candidate_waypoints(paths, costmap=self.costmap)
             # self.visualization_driver.publish_best_waypoints(best_path, costmap=self.costmap)
