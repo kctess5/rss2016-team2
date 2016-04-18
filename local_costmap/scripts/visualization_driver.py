@@ -30,12 +30,14 @@ class VisualizationDriver():
 
     # Specific Functions
     def publish_candidate_waypoints(self, candidate_paths, costmap=None):
+        self.publish_clear_all(self.candidate_waypoints_pub)
         c = 0
         for path in candidate_paths:
             c = c + 1;
             self.publish_waypoints(path, c, 0, 1 , 0, 0.10, self.candidate_waypoints_pub, costmap=costmap);
 
     def publish_best_waypoints(self, best_path, costmap=None):
+        self.publish_clear_all(self.best_waypoints_pub)
         self.publish_waypoints(best_path, 100, 1, 0 , 0, 0.25, self.best_waypoints_pub, costmap=costmap);
 
     def publish_desired_heading(self, heading):
@@ -122,6 +124,13 @@ class VisualizationDriver():
             marker.color.g = colorg;
             marker.color.b = colorb;
             publisher.publish(marker)
+
+    def publish_clear_all(self, publisher):
+        marker = Marker()
+        marker.header.frame_id = "base_link";
+        marker.ns = "Markers_NS";
+        marker.action = 3 # DELETEALL action.
+        publisher.publish(marker)
         
     def publish_costmap(self):
         pass
