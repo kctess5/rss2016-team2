@@ -30,47 +30,48 @@ class VisualizationDriver():
         self.desired_heading_pub = rospy.Publisher('desired_heading', Marker, queue_size=10)
         self.desired_steering_pub = rospy.Publisher('desired_steering', Marker, queue_size=10)
 
-        self.best_path_pub = rospy.Publisher('best_path', Marker, queue_size=1)
+        self.best_path_pub = rospy.Publisher('best_path', Marker, queue_size=10)
         self.candidate_paths_pub = rospy.Publisher('candidate_paths', MarkerArray, queue_size=10)
 
     # Specific Functions
     def publish_candidate_waypoints(self, candidate_paths, costmap=None):
-        self.publish_clear_all(self.candidate_waypoints_pub)
+        self.candidate_waypoints_pub(self.marker_clear_all())
         c = 0
         for path in candidate_paths:
             c = c + 1;
             self.publish_waypoints(path, c, 0, 1 , 0, 0.10, self.candidate_waypoints_pub, costmap=costmap);
 
     def publish_best_waypoints(self, best_path, costmap=None):
-        self.publish_clear_all(self.best_waypoints_pub)
+        self.best_waypoints_pub(self.marker_clear_all())
         self.publish_waypoints(best_path, 100, 1, 0 , 0, 0.25, self.best_waypoints_pub, costmap=costmap);
 
     def publish_best_path(self, best_path, costmap=None):
-        marker = self.marker_from_path(best_path, z=0.1, costmap=costmap)
+        marker = self.marker_from_path(best_path, z=0.1, linewidth=0.06, costmap=costmap)
         self.best_path_pub.publish(marker)
 
     def publish_candidate_paths(self, candidate_paths, costmap=None):
-        marker_array = MarkerArray(markers=
-                                   [self.marker_from_path(path,
-                                                          index=i,
-                                                          linewidth=0.05,
-                                                          color=ColorRGBA(0, 1, 0, 1),
-                                                          costmap=costmap)
-                                    for i, path in enumerate(candidate_paths)])
+        markers = [self.marker_clear_all()]
+        markers += [self.marker_from_path(path,
+                                          index=i,
+                                          linewidth=0.03,
+                                          color=ColorRGBA(0, 1, 0, 1),
+                                          costmap=costmap)
+                    for i, path in enumerate(candidate_paths)]
+        marker_array = MarkerArray(markers=markers)
         self.candidate_paths_pub.publish(marker_array)
 
     def marker_from_path(self, path, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., costmap=None):
         marker = Marker()
         marker.header = Header(
             stamp=rospy.Time.now(),
-            frame_id="base_link")
+            frame_id="hokuyo_link")
 
         marker.ns = "Markers_NS"
         marker.id = index
         marker.type = Marker.LINE_STRIP
         marker.action = 0 # action=0 add/modify object
         marker.color = color
-        marker.lifetime = rospy.Duration.from_sec(0.5)
+        marker.lifetime = rospy.Duration.from_sec(10.)
 
         marker.pose = Pose()
         marker.pose.position.z = z
@@ -171,12 +172,12 @@ class VisualizationDriver():
             marker.color.b = colorb;
             publisher.publish(marker)
 
-    def publish_clear_all(self, publisher):
+    def marker_clear_all(self):
+        # Create a marker which clears all.
         marker = Marker()
         marker.header.frame_id = "base_link";
-        marker.ns = "Markers_NS";
         marker.action = 3 # DELETEALL action.
-        publisher.publish(marker)
+        return marker
         
     def publish_costmap(self):
         pass
