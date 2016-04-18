@@ -539,7 +539,7 @@ def angle_to_quaternion(angle):
 
 if __name__ == '__main__':
     try:
-        viz = param("corey_vm_visualize") if whoami.is_coreys_vm() else param("visualize")
+        viz = param("racecar_visualize") if whoami.is_racecar() else param("vm_visualize")
         LocalExplorer(viz)
     except rospy.ROSInterruptException:
         pass

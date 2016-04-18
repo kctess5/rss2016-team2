@@ -1,7 +1,7 @@
 ---
 # System flags
-visualize: false
-corey_vm_visualize: true
+vm_visualize: true
+racecar_visualize: false 
 
 # Local Explorer flags
 planning_freq: 5
