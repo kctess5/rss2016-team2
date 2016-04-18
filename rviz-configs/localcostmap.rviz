@@ -121,21 +121,21 @@ Visualization Manager:
       Topic: /map
       Value: true
     - Class: rviz/Marker
-      Enabled: true
+      Enabled: false
       Marker Topic: /candidate_waypoints
       Name: Marker
       Namespaces:
-        Markers_NS: true
+        {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: rviz/Marker
-      Enabled: true
+      Enabled: false
       Marker Topic: /best_waypoints
       Name: Marker
       Namespaces:
-        Markers_NS: true
+        {}
       Queue Size: 100
-      Value: true
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -160,7 +160,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 19.6968
+      Distance: 19.1336
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.06
         Stereo Focal Distance: 1
@@ -193,5 +193,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 886
-  X: 331
-  Y: 232
+  X: 289
+  Y: 231
