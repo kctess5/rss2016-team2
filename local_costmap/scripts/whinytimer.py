@@ -59,3 +59,37 @@ class WhinyTimer(object):
                             .format(-sleep_time, last_complete_time - last_exec_time,
                                     warning_suppress_duration))
                     last_warned_time = time.time()
+
+
+class EveryN(object):
+    """Counter to facilitate doing something every n rounds.
+
+    Args:
+        n: step returns true after n calls.
+    """
+    def __init__(self, n):
+        self._start = n
+        self._counter = self._start
+        self.reset()
+
+    def reset(self, n=None):
+        """Reset the counter"""
+        if n != None:
+            self._start = n
+        self._counter = self._start
+
+    def step(self, auto_reset=False):
+        """Step the timer.
+        Args:
+            auto_reset: Whether to reset after the timer hits.
+        Returns: Whether the timer has hit. (bool)
+        """
+        self._counter -= 1
+        if auto_reset and self.peak():
+            self.reset()
+            return True
+        else:
+            return self.peak()
+
+    def peak(self):
+        return self._counter < 0
