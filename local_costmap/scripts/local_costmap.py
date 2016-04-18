@@ -419,6 +419,7 @@ class LocalExplorer(ControlModule):
         # TODO inherit from controller thing
         self.PLANNING_FREQ = param("planning_freq")
         self.VISUALIZE = VISUALIZE
+        self.visualize_timer = whinytimer.EveryN(10)
         self.BACKUP_SPEED = param("backup_speed")
         self.BACKUP_DURATION = param("backup_duration")
 
@@ -504,8 +505,10 @@ class LocalExplorer(ControlModule):
                     i = exploration_weighted_index(weights, self.alpha)
                 best_path = viable_paths[i][1]
 
-        # Visualizations
-        if self.VISUALIZE:
+        # Visualizations.
+        if self.VISUALIZE and self.visualize_timer.step(auto_reset=True):
+            global FooSwitch
+            FooSwitch = not FooSwitch
             # self.visualization_driver.publish_candidate_waypoints([v[1] for v in viable_paths], costmap=self.costmap)
             self.visualization_driver.publish_candidate_waypoints(paths, costmap=self.costmap)
             self.visualization_driver.publish_best_waypoints(best_path, costmap=self.costmap)
