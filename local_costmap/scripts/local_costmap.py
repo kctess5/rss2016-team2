@@ -214,7 +214,7 @@ class LocalCostmap(object):
 
         # the class which manages the local costmap buffer
         # bins/meter, (meters), (meters)
-        self.buffer = FrameBuffer(10, (-1,6), (-4,4))
+        self.buffer = FrameBuffer(5, (-3,10), (-8,8))
         self.first_laser_recieved = False
         self.im = None
         self.dirty = False
@@ -270,6 +270,9 @@ class LocalCostmap(object):
         fp = [1.0, 0.1, 0]
         z = np.interp(self.buffer.dist_at(x, y), xp, fp)
         return z * z
+
+    def dist_at(self, x, y):
+        return self.buffer.dist_at(x, y)
 
     # used to ensure that each costmap is only used once, to avoid wasted compute
     def mark_clean(self):
@@ -361,24 +364,28 @@ class PathGenerator(object):
         # return paths
 
         def heuristic_fn(state):
+            """Function used to guide search.
+            A lower return values means better.
+            """
             # Prefer lower cost areas.
             x, y, heading = state.waypoints[-1]
             cost = costmap.cost_at(x, y)
-            # Also prefer positive x movement.
-            forward = x > 0.
-            return cost if forward else cost * 10.
+            # Prefer positive x movement.
+            forward = min(x, 2.)
+            # Prefer lower curvature per distance traveled.
+            curvyness = np.sum(np.square(np.absolute(state.steering_angles))) / state.length
+            return cost + 0.001 * -forward + 0.001 * curvyness
 
         IMPASSIBLE_THRESHOLD = param("impassible_threshold")
         def cull_fn(x, y, heading):
             # Allow paths which are not too close to obstacles.
-            cost = costmap.cost_at(x, y)
-            passable = cost < IMPASSIBLE_THRESHOLD
-            return passable
+            obstacle_dist = costmap.dist_at(x, y)
+            return obstacle_dist > IMPASSIBLE_THRESHOLD
 
         search = pathsearch.PathSearch(cull_fn, heuristic_fn)
-        search.crunch(credits=10)
+        search.crunch(credits=25)
 
-        return search.best(n=5)
+        return search.best(n=1)
 
     # def radius(self, curve):
     #     return self.WHEEL_BASE / np.tan(curve)
@@ -533,7 +540,7 @@ class LocalExplorer(ControlModule):
             # self.visualization_driver.publish_candidate_waypoints(paths, costmap=self.costmap)
             # self.visualization_driver.publish_best_waypoints(best_path, costmap=self.costmap)
             self.visualization_driver.publish_best_path(best_path, costmap=self.costmap)
-            self.visualization_driver.publish_candidate_paths([vp[1] for vp in viable_paths], costmap=self.costmap)
+            # self.visualization_driver.publish_candidate_paths([vp[1] for vp in viable_paths], costmap=self.costmap)
             # print()
             # print(self.costmap.get_map())
             # self.costmap_pub.publish(self.costmap.get_map())

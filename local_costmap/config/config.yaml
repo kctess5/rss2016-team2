@@ -4,7 +4,7 @@ vm_visualize: true
 racecar_visualize: false 
 
 # Local Explorer flags
-planning_freq: 5
+planning_freq: 10
 backup_speed: 0.5
 backup_duration: 1.0
 
@@ -24,5 +24,5 @@ path_discretization: 10
 wheel_base: 0.325
 
 # Path Evaluator flags
-impassible_threshold: 0.5
+impassible_threshold: .4
 ...
