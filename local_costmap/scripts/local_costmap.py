@@ -17,6 +17,7 @@ import pathlib
 from pathlib import Path
 import pathsearch
 import whinytimer
+import navigator
 
 import threading
 import numpy as np
@@ -220,7 +221,8 @@ class LocalCostmap(object):
         self.dirty = False
 
         self.LASER_SCAN_TOPIC = "/scan" if whoami.is_racecar() else "/racecar/laser/scan"
-        self.scan_subscriber = rospy.Subscriber(self.LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback, queue_size=1)
+        self.scan_subscriber = rospy.Subscriber(\
+                self.LASER_SCAN_TOPIC, numpy_msg(LaserScan), self.scan_callback, queue_size=1)
 
         # self.pub_costmap = rospy.Publisher('~costmap', OccupancyGrid, queue_size=1)
 
@@ -237,12 +239,18 @@ class LocalCostmap(object):
         start = time.clock()
 
         if not self.first_laser_recieved:
-            print("first laser received: angle_min: %f angle_max %f angle_incr: %f ranges_len: %d range_min: %.2f range_max_ %2.2f" % (data.angle_min, data.angle_max, data.angle_increment, data.ranges.shape[0], data.range_min, data.range_max))
+            print(("first laser received: "
+                    "angle_min: %f angle_max %f angle_incr: %f "
+                    "ranges_len: %d range_min: %.2f range_max_ %2.2f") % (
+                    data.angle_min, data.angle_max, data.angle_increment, 
+                        data.ranges.shape[0], data.range_min, data.range_max))
 
-        laser_angles = np.linspace(data.angle_min, data.angle_max, math.ceil((data.angle_max - data.angle_min) / data.angle_increment))
+        laser_angles = np.linspace(data.angle_min, data.angle_max, math.ceil(\
+                (data.angle_max - data.angle_min) / data.angle_increment))
         laser_ranges = data.ranges
 
-        laser_angles, laser_ranges  = self.filter_lasers(laser_angles, laser_ranges, data.range_min, data.range_max)
+        laser_angles, laser_ranges  = self.filter_lasers(\
+                laser_angles, laser_ranges, data.range_min, data.range_max)
         laser_x, laser_y =  polar_to_euclid(laser_angles, laser_ranges)
 
         # compute the distance transform from the laser scanner data
@@ -462,6 +470,7 @@ class LocalExplorer(ControlModule):
         self.costmap = LocalCostmap(VISUALIZE)
         self.path_gen = PathGenerator()
         self.path_eval = PathEvaluator()
+        self.navigator = navigator.Navigator(VISUALIZE)
         self.visualization_driver = VisualizationDriver()
         self.costmap_pub = rospy.Publisher('/map', OccupancyGrid, queue_size=1)
 
@@ -539,6 +548,7 @@ class LocalExplorer(ControlModule):
             # self.visualization_driver.publish_candidate_waypoints([v[1] for v in viable_paths], costmap=self.costmap)
             # self.visualization_driver.publish_candidate_waypoints(paths, costmap=self.costmap)
             # self.visualization_driver.publish_best_waypoints(best_path, costmap=self.costmap)
+            self.navigator.visualize()
             self.visualization_driver.publish_best_path(best_path, costmap=self.costmap)
             # self.visualization_driver.publish_candidate_paths([vp[1] for vp in viable_paths], costmap=self.costmap)
             # print()
