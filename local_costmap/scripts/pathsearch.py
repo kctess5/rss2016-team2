@@ -46,9 +46,10 @@ class PathSearch(object):
         self.steering_angle_min = -param("max_curve")
         self.steering_angle_max = -self.steering_angle_min
         # Number of paths stemming from each fork.
-        self.nfork = 5
+        self.nfork_initial = 15.
+        self.nfork = 5.
         # Distance between forks.
-        self.fork_step_distance = .5
+        self.fork_step_distance = .7
         # Distance between cull_fn tests. Should be smaller than fork_distance.
         self.cull_step_distance = .1
         # Starting position for the search.
@@ -91,6 +92,7 @@ class PathSearch(object):
         # Pop the best path to split.
         parent_score, parent_state = heapq.heappop(self.frontier)
 
+        nfork = self.nfork if len(parent_state.steering_angles) == 0 else self.nfork_initial
         steering_angles = np.linspace(self.steering_angle_min,
                                       self.steering_angle_max,
                                       num=self.nfork)
@@ -112,8 +114,8 @@ class PathSearch(object):
             # x, y, heading = intermediates[-1]
             new_state = parent_state._replace(
                 # waypoints=parent_state.waypoints + [[x, y, heading]],
-                waypoints=parent_state.waypoints + intermediates,
-                # waypoints=parent_state.waypoints + intermediates[-1:],
+                # waypoints=parent_state.waypoints + intermediates,
+                waypoints=parent_state.waypoints + intermediates[-1:],
                 steering_angles=parent_state.steering_angles + [steering_angle],
                 length=parent_state.length + self.fork_step_distance,
             )

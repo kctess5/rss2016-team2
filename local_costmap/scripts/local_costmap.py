@@ -373,8 +373,11 @@ class PathGenerator(object):
             # Prefer positive x movement.
             forward = min(x, 2.)
             # Prefer lower curvature per distance traveled.
-            curvyness = np.sum(np.square(np.absolute(state.steering_angles))) / state.length
-            return cost + 0.001 * -forward + 0.001 * curvyness
+            # curvyness = np.sum(np.square(np.absolute(state.steering_angles))) / state.length
+            curvyness = np.max(np.absolute(state.steering_angles))
+            # Prefer ending up to the right slightly. (Right turns)
+            dest_angle = np.arctan2(y, x)
+            return 1. * cost + 0.00 * -forward + 0.01 * curvyness + 0.000 * dest_angle
 
         IMPASSIBLE_THRESHOLD = param("impassible_threshold")
         def cull_fn(x, y, heading):
@@ -448,7 +451,7 @@ class LocalExplorer(ControlModule):
         # TODO inherit from controller thing
         self.PLANNING_FREQ = param("planning_freq")
         self.VISUALIZE = VISUALIZE
-        self.visualize_timer = whinytimer.EveryN(0)
+        self.visualize_timer = whinytimer.EveryN(5)
         self.BACKUP_SPEED = param("backup_speed")
         self.BACKUP_DURATION = param("backup_duration")
 
