@@ -15,6 +15,7 @@ from helper_functions import nondeterministic_weighted_index, exploration_weight
 import whoami
 import pathlib
 from pathlib import Path
+import pathsearch
 import whinytimer
 
 import threading
@@ -332,7 +333,7 @@ class PathGenerator(object):
         self.PATH_DISCRETIZATION = param("path_discretization") # num points to evaluate for each path
         self.WHEEL_BASE = param("wheel_base")
 
-    def generate_paths(self):
+    def generate_paths(self, costmap):
         # Return only one simple candidate path.
         # path = pathlib.path_constant_curve(
         #     wheel_base=self.WHEEL_BASE,
@@ -351,13 +352,33 @@ class PathGenerator(object):
         # return paths
 
         # Return a forking tree of paths.
-        steering_angle_max = self.MAX_CURVE
-        paths = pathlib.paths_forking(
-            wheel_base=self.WHEEL_BASE,
-            steering_angle_min=-steering_angle_max, steering_angle_max=steering_angle_max,
-            npaths=10, nfork=4, step_distance=.1, fork_distance=1.4, travel_distance=self.PATH_LENGTH,
-            start_x=0, start_y=0, start_heading=0)
-        return paths
+        # steering_angle_max = self.MAX_CURVE
+        # paths = pathlib.paths_forking(
+        #     wheel_base=self.WHEEL_BASE,
+        #     steering_angle_min=-steering_angle_max, steering_angle_max=steering_angle_max,
+        #     npaths=10, nfork=4, step_distance=.1, fork_distance=1.4, travel_distance=self.PATH_LENGTH,
+        #     start_x=0, start_y=0, start_heading=0)
+        # return paths
+
+        def heuristic_fn(state):
+            # Prefer lower cost areas.
+            x, y, heading = state.waypoints[-1]
+            cost = costmap.cost_at(x, y)
+            # Also prefer positive x movement.
+            forward = x > 0.
+            return cost if forward else cost * 10.
+
+        IMPASSIBLE_THRESHOLD = param("impassible_threshold")
+        def cull_fn(x, y, heading):
+            # Allow paths which are not too close to obstacles.
+            cost = costmap.cost_at(x, y)
+            passable = cost < IMPASSIBLE_THRESHOLD
+            return passable
+
+        search = pathsearch.PathSearch(cull_fn, heuristic_fn)
+        search.crunch(credits=10)
+
+        return search.best(n=5)
 
     # def radius(self, curve):
     #     return self.WHEEL_BASE / np.tan(curve)
@@ -420,7 +441,7 @@ class LocalExplorer(ControlModule):
         # TODO inherit from controller thing
         self.PLANNING_FREQ = param("planning_freq")
         self.VISUALIZE = VISUALIZE
-        self.visualize_timer = whinytimer.EveryN(10)
+        self.visualize_timer = whinytimer.EveryN(0)
         self.BACKUP_SPEED = param("backup_speed")
         self.BACKUP_DURATION = param("backup_duration")
 
@@ -474,7 +495,7 @@ class LocalExplorer(ControlModule):
         # print("timer timer_callback")
         rospy.logdebug("Computing control in LocalExplorer")
 
-        paths = self.path_gen.generate_paths()
+        paths = self.path_gen.generate_paths(self.costmap)
         costs = self.path_eval.evaluate_paths(paths, self.costmap)
 
         assert len(paths) == len(costs)
