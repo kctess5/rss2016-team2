@@ -107,7 +107,11 @@ class PathSearch(object):
                              for d in intermediate_distances]
             # TODO this conversion is dumb. Why is pathlib emitting short numpy arrays anyway?
             intermediates = [w.tolist() for w in intermediates]
-            if not all(self.cull_fn(x, y, heading) for [x, y, heading] in intermediates):
+            all_clear = all(self.cull_fn(x, y, heading) for [x, y, heading] in intermediates)
+            is_starting_point = len(parent_state.steering_angles) == 0
+            # Kill branches which do not pass the culling function.
+            # Except always allow the starting point to branch.
+            if not is_starting_point and not all_clear:
                 # Kill this branch.
                 continue
 
@@ -129,9 +133,12 @@ class PathSearch(object):
         """
 
     def best(self, n):
-        """Get the best path so far.
-        Returns: The best Path so far considered.
-                 Or None if no paths are live
+        """Get up to the n best paths.
+        Args:
+            n: The maximum number of paths to return.
+               A value of -1 is special and means to return all paths, unsorted.
+        Returns: Up to the best n paths Paths so far considered
+                 Or an empty list if no paths are live.
         """
         if len(self.frontier) == 0:
             return []
@@ -139,6 +146,8 @@ class PathSearch(object):
         if n == 1:
             # Get the best state from the priority queue.
             entries = [self.frontier[0]]
+        elif n == -1:
+            entries = self.frontier
         else:
             entries = heapq.nsmallest(n, self.frontier)
 

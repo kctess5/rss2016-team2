@@ -93,7 +93,7 @@ class Navigator(object):
     def _length(self, segment):
         [[x0, y0],[x1, y1]] = segment
         l = math.sqrt((x1 - x0)**2 + (y1 - y0)**2)
-        print l
+        # print l
         return l
 
     def camera_update(self, camera_data):

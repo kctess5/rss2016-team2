@@ -335,16 +335,44 @@ class PathGenerator(object):
     """
 
     def __init__(self):
-        # The maximum length of a path in meters.
-        self.PATH_LENGTH = param("max_path_length")
-        # How long each leg of the path is in meters.
-        self.FIXED_SPEED = param("fixed_speed")
-        self.PATH_CANDIDATES = param("path_candidates")
-        self.MAX_CURVE = param("max_curve") # maximum path curvature in radians
-        self.PATH_DISCRETIZATION = param("path_discretization") # num points to evaluate for each path
-        self.WHEEL_BASE = param("wheel_base")
+        # # The maximum length of a path in meters.
+        # self.PATH_LENGTH = param("max_path_length")
+        # # How long each leg of the path is in meters.
+        # self.FIXED_SPEED = param("fixed_speed")
+        # self.PATH_CANDIDATES = param("path_candidates")
+        # self.MAX_CURVE = param("max_curve") # maximum path curvature in radians
+        # self.PATH_DISCRETIZATION = param("path_discretization") # num points to evaluate for each path
+        # self.WHEEL_BASE = param("wheel_base")
+        pass
 
-    def generate_paths(self, costmap):
+    def step(self, costmap):
+        """Do a computation step."""
+        def heuristic_fn(state):
+            """Function used to guide search.
+            A lower return values means better.
+            """
+            # Prefer lower cost areas.
+            x, y, heading = state.waypoints[-1]
+            cost = costmap.cost_at(x, y)
+            # Prefer positive x movement.
+            forward = min(x, 2.)
+            # Prefer lower curvature per distance traveled.
+            # curvyness = np.sum(np.square(np.absolute(state.steering_angles))) / state.length
+            curvyness = np.max(np.absolute(state.steering_angles))
+            # Prefer ending up to the right slightly. (Right turns)
+            dest_angle = np.arctan2(y, x)
+            return 1. * cost + 0.00 * -forward + 0.01 * curvyness + 0.000 * dest_angle
+
+        IMPASSIBLE_THRESHOLD = param("impassible_threshold")
+        def cull_fn(x, y, heading):
+            # Allow paths which are not too close to obstacles.
+            obstacle_dist = costmap.dist_at(x, y)
+            return obstacle_dist > IMPASSIBLE_THRESHOLD
+
+        self.search = pathsearch.PathSearch(cull_fn, heuristic_fn)
+        self.search.crunch(credits=25)
+
+    # def generate_paths(self, costmap):
         # Return only one simple candidate path.
         # path = pathlib.path_constant_curve(
         #     wheel_base=self.WHEEL_BASE,
@@ -371,32 +399,6 @@ class PathGenerator(object):
         #     start_x=0, start_y=0, start_heading=0)
         # return paths
 
-        def heuristic_fn(state):
-            """Function used to guide search.
-            A lower return values means better.
-            """
-            # Prefer lower cost areas.
-            x, y, heading = state.waypoints[-1]
-            cost = costmap.cost_at(x, y)
-            # Prefer positive x movement.
-            forward = min(x, 2.)
-            # Prefer lower curvature per distance traveled.
-            # curvyness = np.sum(np.square(np.absolute(state.steering_angles))) / state.length
-            curvyness = np.max(np.absolute(state.steering_angles))
-            # Prefer ending up to the right slightly. (Right turns)
-            dest_angle = np.arctan2(y, x)
-            return 1. * cost + 0.00 * -forward + 0.01 * curvyness + 0.000 * dest_angle
-
-        IMPASSIBLE_THRESHOLD = param("impassible_threshold")
-        def cull_fn(x, y, heading):
-            # Allow paths which are not too close to obstacles.
-            obstacle_dist = costmap.dist_at(x, y)
-            return obstacle_dist > IMPASSIBLE_THRESHOLD
-
-        search = pathsearch.PathSearch(cull_fn, heuristic_fn)
-        search.crunch(credits=25)
-
-        return search.best(n=1)
 
     # def radius(self, curve):
     #     return self.WHEEL_BASE / np.tan(curve)
@@ -459,7 +461,7 @@ class LocalExplorer(ControlModule):
         # TODO inherit from controller thing
         self.PLANNING_FREQ = param("planning_freq")
         self.VISUALIZE = VISUALIZE
-        self.visualize_timer = whinytimer.EveryN(5)
+        self.visualize_timer = whinytimer.EveryN(int(param("racecar_visualize_everyn")))
         self.BACKUP_SPEED = param("backup_speed")
         self.BACKUP_DURATION = param("backup_duration")
 
@@ -514,37 +516,17 @@ class LocalExplorer(ControlModule):
         # print("timer timer_callback")
         rospy.logdebug("Computing control in LocalExplorer")
 
-        paths = self.path_gen.generate_paths(self.costmap)
-        costs = self.path_eval.evaluate_paths(paths, self.costmap)
+        self.path_gen.step(self.costmap)
+        best_paths = self.path_gen.search.best(n=1)
+        all_paths = self.path_gen.search.best(n=-1)
 
-        assert len(paths) == len(costs)
+        print("paths: {}/{}".format(len(best_paths), len(all_paths)))
 
-        # best_path = paths[min(range(len(costs)), key=lambda i: costs[i])]
-
-        viable_paths = []
-        for i in xrange(len(costs)):
-            if not costs[i] == None:
-                viable_paths.append((costs[i], paths[i]))
-
-        print(len(viable_paths), "viable paths")
-
-        if len(viable_paths) == 0:
+        if len(best_paths) == 0:
             self.start_backing_up()
             return self.back_up()
-            # best_path = Path(steering_angle=0, waypoints=[], speed=0)
         else:
-            if self.path_pick == self.MIN_COST_PICK:
-                # Choose the lowest cost of the viable paths.
-                best_path = min(viable_paths, key=lambda (cost,path): cost)[1]
-            else:
-                weights = [1./(path[0]+.01) for path in viable_paths]
-                if self.path_pick == self.COST_WEIGHTED_PROB:
-                    # tries out choosing path by inverse of cost
-                    i = nondeterministic_weighted_index(weights)
-                elif self.path_pick == self.COST_WEIGHTED_PROB_TUNABLE:
-                    # Introduces tunable exploration parameter (alpha)
-                    i = exploration_weighted_index(weights, self.alpha)
-                best_path = viable_paths[i][1]
+            best_path = best_paths[0]
 
         # Visualizations.
         if self.VISUALIZE and self.visualize_timer.step(auto_reset=True):
@@ -553,13 +535,18 @@ class LocalExplorer(ControlModule):
             # self.visualization_driver.publish_best_waypoints(best_path, costmap=self.costmap)
             self.navigator.visualize()
             self.visualization_driver.publish_best_path(best_path, costmap=self.costmap)
-            # self.visualization_driver.publish_candidate_paths([vp[1] for vp in viable_paths], costmap=self.costmap)
+            all_paths = self.path_gen.search.best(n=-1)
+            self.visualization_driver.publish_candidate_paths(all_paths, costmap=self.costmap)
             # print()
             # print(self.costmap.get_map())
             # self.costmap_pub.publish(self.costmap.get_map())
 
         control_msg = self.make_message("direct_drive")
-        control_msg.drive_msg.speed = best_path.speed
+        # control_msg.drive_msg.speed = best_path.speed
+        # Drive faster when straight and slower when turned.
+        control_msg.drive_msg.speed = np.interp(abs(best_path.steering_angle),
+                                                [0, np.pi/2.],
+                                                [param("override_speed"), param("override_speed_min")])
         control_msg.drive_msg.steering_angle = best_path.steering_angle
 
         self.control_pub.publish(control_msg)

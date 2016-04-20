@@ -64,7 +64,7 @@ class VisualizationDriver():
         marker = Marker()
         marker.header = Header(
             stamp=rospy.Time.now(),
-            frame_id="hokuyo_link")
+            frame_id="base_link")
 
         marker.ns = "Markers_NS"
         marker.id = index
