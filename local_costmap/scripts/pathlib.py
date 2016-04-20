@@ -15,7 +15,7 @@ Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
 # path.waypoints[0] is always at the start point of the path.
 
 DEFAULT_WHEEL_BASE = 0.325
-DEFAULT_SPEED = 1.
+DEFAULT_SPEED = 1.5
 
 
 def turning_radius(wheel_base, steering_angle):
