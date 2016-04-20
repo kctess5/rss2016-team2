@@ -7,6 +7,7 @@ import time
 from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
 from car_msgs.msg import HighControl
 from sensor_msgs.msg import Joy
+from std_msgs.msg import String
 
 ''' Joystick constants
 '''
@@ -172,6 +173,7 @@ class Car(object):
 
 		self.joy_sub = rospy.Subscriber("vesc/joy", Joy, self.joyCallback)
 		self.control_sub = rospy.Subscriber("/car/high_control", HighControl, self.controlCallback)
+		self.enabled_pub = rospy.Publisher("/car/enabled", String, queue_size=1)
 
 		self.enabled = False
 		self.last_toggle = time.clock()
@@ -196,15 +198,19 @@ class Car(object):
 			return None
 		return self.modules[self.active_module]
 
+	def publishEnabled(self, module):
+		print("PUBLISHING_ENABLED")
+		self.enabled_pub.publish(module)
+
 	def joyCallback(self, joy_msg):
 		# toggle the the active state of the low level motor driver
-
-		if time.clock() - self.last_toggle > 0.01 and sum(joy_msg.buttons): # debounce controller buttons
+		if time.clock() - self.last_toggle > 0.02 and sum(joy_msg.buttons): # debounce controller buttons
 		# if sum(joy_msg.buttons): # debounce controller buttons
 
 			if joy_msg.buttons[Y_BUTTON] == 1:
 				rospy.loginfo("Toggling module: %s", self.getActiveModule())
 				self.llDriver.toggle_enabled()
+				self.publishEnabled(self.getActiveModule())
 				
 			if joy_msg.buttons[X_BUTTON] == 1 and len(self.modules):
 				self.active_module = (self.active_module + 1) % len(self.modules)
