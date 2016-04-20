@@ -90,8 +90,7 @@ class LLMotor(LLDriver):
 		drive_msg.speed = speed
 		drive_msg.acceleration = acceleration
 		drive_msg.jerk = jerk
-		# Negate the steering angle because the simulator is backwards.
-		drive_msg.steering_angle = -steering_angle
+		drive_msg.steering_angle = steering_angle
 		drive_msg.steering_angle_velocity = steering_angle_velocity
 
 		drive_msg_stamped.drive = drive_msg
@@ -122,6 +121,7 @@ class LLSimulator(LLDriver):
 		drive_msg.speed = speed
 		drive_msg.acceleration = acceleration
 		drive_msg.jerk = jerk
+		# Negate the steering angle because the simulator is backwards.
 		drive_msg.steering_angle = -steering_angle
 		drive_msg.steering_angle_velocity = steering_angle_velocity
 
