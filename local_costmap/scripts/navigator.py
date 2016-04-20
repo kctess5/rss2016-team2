@@ -27,7 +27,6 @@ class Navigator(object):
                 LaserScan, self.laser_update, queue_size=1)
 
         if self.should_visualize:
-            self.marker_id = 0
             self.viz_pub = {}
 
             def init_marker_publisher(name):
@@ -48,6 +47,9 @@ class Navigator(object):
         # (this might be only needed for the simulator)
         ranges[ranges + 0.1 > laser_data.range_max] = INF
         angles = (np.arange(ranges.shape[0]) * laser_data.angle_increment) + laser_data.angle_min
+        include_indices = np.where((angles > -math.pi/2.) & (angles < math.pi/2.))
+        ranges = ranges[include_indices]
+        angles = angles[include_indices]
         discontinuities = np.hstack(([False],
                 np.abs(ranges[:-1] - ranges[1:]) > DISCONTINUITY_THRESHOLD))
         labeled = np.cumsum(discontinuities)
@@ -67,7 +69,9 @@ class Navigator(object):
             right_point = self._polar_to_point(ranges[i_right], angles[i_right])
             new_walls.append([left_point, right_point])
         self.walls = new_walls
-        self.corridors = [[lw[1], rw[0]] for lw, rw in zip(self.walls, self.walls[1:])]
+        self.corridors = np.array([[lw[1], rw[0]] for lw, rw in zip(self.walls, self.walls[1:])])
+        # Only include wide enough corridors
+        self.corridors = filter(lambda c: self._length(c) > 1, self.corridors)
         # TODO: the corridor is not best described by the endpoints of each wall,
         # but rather the endpoint of one wall and the closest point on the other wall
         # (whichever combo comes out shorter). This would capture the "doorway".
@@ -85,6 +89,12 @@ class Navigator(object):
     def _polar_to_point(self, distance, angle):
         """ returns [x,y] """
         return [distance*math.cos(angle), distance*math.sin(angle)]
+
+    def _length(self, segment):
+        [[x0, y0],[x1, y1]] = segment
+        l = math.sqrt((x1 - x0)**2 + (y1 - y0)**2)
+        print l
+        return l
 
     def camera_update(self, camera_data):
         """
@@ -115,8 +125,7 @@ class Navigator(object):
                 stamp=rospy.Time.now(),
                 frame_id="hokuyo_link")
         x.ns = "navigator"
-        x.id = self.marker_id
-        self.marker_id += 1
+        x.id = 0
         x.action = 0
         x.lifetime = rospy.Duration.from_sec(10.)
         x.points = []
