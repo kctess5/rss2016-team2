@@ -1,0 +1,3 @@
+<launch>
+	<node name="test" pkg="test_module" type="test.py" output="log"/>
+</launch>
