@@ -1,6 +1,7 @@
 <launch>
 	<param name="log_level" value="INFO"/>
 	<rosparam command="load" ns="local_costmap" file="$(find local_costmap)/config/config.yaml" />
+	<rosparam command="load" ns="dynamics" file="$(find local_costmap)/config/dynamics.yaml" />
 
 	<node pkg="tf" type="static_transform_publisher" name="hokuyo_link_broadcaster"
 		args="0 0 0 0 0 0 1 /base_link /hokuyo_link 50" />

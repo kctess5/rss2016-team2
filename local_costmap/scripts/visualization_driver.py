@@ -6,12 +6,12 @@ from std_msgs.msg import Header, ColorRGBA, Float32
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point, Pose, Vector3
 import math
-from helpers import param, unfuck_params
+from helpers import param
 
 class VisualizationDriver(object):
     """ The class responsible for visualizing the cars algorithms"""
     def __init__(self):
-        self.viz_params = unfuck_params(param("viz"))
+        self.viz_params = param("viz")
         self.channels = {}
         self.last_pubs = {}
 

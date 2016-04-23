@@ -9,60 +9,60 @@
 # ---------------- #
 
 viz:
-  - topics:
-    - goals:
-      - next_goal: 
-        - level: 1
+  topics:
+    goals:
+      next_goal: 
+        level: 1
         # given in published messages/second
-        - rate_limit: 5
-        - type: "pose"
-        - color: [0,1,1,1]
-      - corridors:
-        - level: 1
-        - rate_limit: 5
-        - type: "segment"
-        - color: [0,1,0,1]
-      - walls:
-        - level: 2
-        - rate_limit: 5
-        - type: "segment"
-        - color: [1,0,1,1]
-    - obstacles:
-      - inadmissible:
-        - level: 3
-        - rate_limit: 3
-        - type: "omap"
-        - color: [0,0,0,1]
-    - path_search:
-      - best_path:
-        - level: 1
-        - rate_limit: 5
-        - type: "path"
-        - color: [0,0,0,1]
-      - viable_paths:
-        - level: 2
-        - rate_limit: 5
-        - type: "path"
-        - color: [0,0,0,1]
-      - speed:
-        - level: 1
-        - rate_limit: 10
-        - type: "float"
-      - steering:
-        - level: 1
-        - rate_limit: 10
-        - type: "float"
+        rate_limit: 5
+        type: "pose"
+        color: [0,1,1,1]
+      corridors:
+        level: 1
+        rate_limit: 5
+        type: "segment"
+        color: [0,1,0,1]
+      walls:
+        level: 2
+        rate_limit: 5
+        type: "segment"
+        color: [1,0,1,1]
+    obstacles:
+      inadmissible:
+        level: 3
+        rate_limit: 3
+        type: "omap"
+        color: [0,0,0,1]
+    path_search:
+      best_path:
+        level: 1
+        rate_limit: 5
+        type: "path"
+        color: [0,0,0,1]
+      viable_paths:
+        level: 2
+        rate_limit: 5
+        type: "path"
+        color: [0,0,0,1]
+      speed:
+        level: 1
+        rate_limit: 10
+        type: "float"
+      steering:
+        level: 1
+        rate_limit: 10
+        type: "float"
 
 wheel_base: 0.27
 planning_freq: 4
 
 runtime_specific:
-  - racecar:
-    - scan_topic: "/scan"
-    - visualize_level: 1
-  - not_racecar:
-    - scan_topic: "/racecar/laser/scan"
-    - visualize_level: 2
+  racecar:
+    scan_topic: "/scan"
+    visualize_level: 1
+  not_racecar:
+    scan_topic: "/racecar/laser/scan"
+    visualize_level: 2
 
 # --------------------------- #
 # obstacle avoidance parameters
@@ -70,32 +70,32 @@ runtime_specific:
 
 # obstacle map size and discretization (bins/meter)
 obstacle_map:
-  - discretization: 5
-  - xmin: -3
-  - xmax: 10
-  - ymin: -8
-  - ymax: 8
+  discretization: 5
+  xmin: -3
+  xmax: 10
+  ymin: -8
+  ymax: 8
   # minimum distance to nearest obstacle to be considered admissible
-  - min_distance: 0.3
+  min_distance: 0.3
   # number of cells worth of spacing between admissibility check waypoints
   # higher is faster, but might result in jumping over obstacles
-  - admissible_hop: 3.0
+  admissible_hop: 3.0
 
 # ----------------------- #
 # Dynamics Model Parameters
 # ----------------------- #
 
-dynamics:
-  # max acceleration in meters/sec or rad/sec
-  # for now these are guesses, testing should be used to find the optimal values
-  - max_linear_accel: 5
-  - max_linear_decel: -8
-  - max_angular_accel: 1.5
+# dynamics:
+#   # max acceleration in meters/sec or rad/sec
+#   # for now these are guesses, testing should be used to find the optimal values
+#   max_linear_accel: 5
+#   max_linear_decel: -8
+#   max_angular_accel: 1.5
   
-  # bounds on mechanical capabilities
-  # 10mph ~= 4.47 m/s
-  - max_speed: 3
-  - max_deflection: 0.35
+#   # bounds on mechanical capabilities
+#   # 10mph ~= 4.47 m/s
+#   max_speed: 3
+#   max_deflection: 0.35
 
 # --------------------- #
 # Path Planner Parameters
@@ -107,10 +107,10 @@ planner:
   # number because it will consider both min/max speed settings
   # this number should be odd
   # the higher it is, the better the found path will be, but the longer it will take
-  - angular_branch_factor: 5
+  angular_branch_factor: 5
 
   # if the path is within this distance, the goal is considered met (meters)
-  - goal_distance_threshold: 0.5
+  goal_distance_threshold: 0.5
 
 # ------------------ #
 # Emergency Parameters
@@ -120,6 +120,6 @@ emergency:
   # when the robot has an old path it can execute but is considered stuck, it applies
   # breaks as fast as possible while following the old path. This damp factor is applied to
   # steering to potentially smooth the path as the car stops. Set to 1 to follow original path
-  - stop_path_steering_damp_factor: 1.0
+  stop_path_steering_damp_factor: 1.0
 
 ...

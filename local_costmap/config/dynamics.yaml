@@ -1,0 +1,41 @@
+# this file contains coefficients for the found curves at the given locations
+---
+# use this data to determine which model to use, and interpolate between the given
+# polynomial coefficients where x=speed for the high slip regions
+steering_prediction:
+  # gives predictions of path arc radius based off steering_angle and speed
+  - steering_angle: 0.13
+    # speed at which to switch to the nonlinear model
+    ackerman_transition: 1.5
+    polynomial_coefficients: [0.224, -0.645, 2.368]
+  - steering_angle: 0.15
+    ackerman_transition: 1.7
+    polynomial_coefficients: [0.336, -1.29, 2.895]
+  - steering_angle: 0.17
+    ackerman_transition: 2
+    polynomial_coefficients: [0.331, -1.3, 2.699]
+  - steering_angle: 0.2
+    ackerman_transition: 2
+    polynomial_coefficients: [0.349, -1.327, 2.411]
+  - steering_angle: 0.25
+    ackerman_transition: 2
+    polynomial_coefficients: [0.278, -0.75, 1.303]
+  - steering_angle: 0.3
+    ackerman_transition: 2
+    polynomial_coefficients: [0.312, -0.953, 1.574]
+  - steering_angle: 0.32
+    ackerman_transition: 1.8
+    polynomial_coefficients: [0.312, -0.953, 1.574]
+
+# these are bad guesses, waiting optimization
+max_linear_accel: 5
+max_linear_decel: -8
+max_angular_accel: 1.5
+
+# bounds on mechanical capabilities
+# 10mph ~= 4.47 m/s
+max_speed: 3
+
+# these numbers have been optimized, don't change them
+max_deflection: 0.32 # DONT CHANGE
+wheelbase: 0.247 # DONT CHANGE

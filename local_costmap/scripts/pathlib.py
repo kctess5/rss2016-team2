@@ -17,8 +17,53 @@ Path = collections.namedtuple("Path", ["steering_angle", "waypoints", "speed"])
 DEFAULT_WHEEL_BASE = 0.325
 DEFAULT_SPEED = 1.5
 
+def arc_step_origin(arc_radius, travel_distance):
+    """Move a car starting at the origin along its path.
+    Coordinate System:
+        +X is "to the right" on paper and "forward" for the car.
+        +Y is "up" on paper and "left turn" for the car.
+        Angles proceed CCW.
+    Args:
+        arc_radius: The effective path arc radius the car should travel
+        travel_distance: Distance the car should travel in meters.
+    Returns:
+        An np array of [x, y, heading] (shape=(3,)).
+    """
+    if arc_radius == 0.:
+        x, y, heading = travel_distance, 0., 0.
+        return (x, y, heading)
+    radius = abs(arc_radius)
+    # Angle of the turning circle spanned by the arc that the car takes.
+    travel_angle = travel_distance / radius
+    # circumference = 2 * np.pi * radius
+    # travel_angle2 = (travel_distance / circumference) * 2 * np.pi
+    # assert np.isclose(travel_angle, travel_angle2), [travel_angle, travel_angle2]
+    x = radius * np.sin(travel_angle)
+    y = radius * (1 - np.cos(travel_angle))
+    heading = travel_angle
+    if arc_radius < 0:
+        y *= -1
+        heading *= -1
+    return np.array([x, y, heading])
+    
 
-def turning_radius(wheel_base, steering_angle):
+def arc_step(arc_radius, travel_distance, start_x, start_y, start_heading):
+    """Move a car starting anywhere along a path with given arc radius.
+    Works by calling arc_step_origin and then transforming to the start.
+    Coordinate System: Same as ack_step_origin.
+    Args:
+        arc_radius: The effective path arc radius the car should travel
+        travel_distance: Distance the car should travel in meters.
+        startx, starty, startheading: Starting pose of the car.
+    Returns: np array of [x, y, heading].
+    """
+    x_o, y_o, heading_o = arc_step_origin(arc_radius, travel_distance)
+    # Rotate and then translate.
+    x_1, y_1 = rotate2d(x_o, y_o, start_heading)
+    x, y, heading = x_1 + start_x, y_1 + start_y, heading_o + start_heading
+    return np.array([x, y, heading])
+
+def ackerman_radius(wheel_base, steering_angle):
     """Get the turning radius of the car at a certain steering angle.
     Args:
         wheel_base: Distance between front and back axel in meters.
@@ -30,7 +75,6 @@ def turning_radius(wheel_base, steering_angle):
     if steering_angle == 0.:
         return float("inf")
     return abs(wheel_base / np.tan(steering_angle))
-
 
 def ack_step_origin(wheel_base, steering_angle, travel_distance):
     """Move a car starting at the origin along its path.
@@ -49,7 +93,7 @@ def ack_step_origin(wheel_base, steering_angle, travel_distance):
     if steering_angle == 0.:
         x, y, heading = travel_distance, 0., 0.
         return (x, y, heading)
-    radius = turning_radius(wheel_base, steering_angle)
+    radius = ackerman_radius(wheel_base, steering_angle)
     # Angle of the turning circle spanned by the arc that the car takes.
     travel_angle = travel_distance / radius
     # circumference = 2 * np.pi * radius
@@ -63,7 +107,6 @@ def ack_step_origin(wheel_base, steering_angle, travel_distance):
         heading *= -1
     return np.array([x, y, heading])
     
-
 def ack_step(wheel_base, steering_angle, travel_distance, start_x, start_y, start_heading):
     """Move a car starting anywhere along its path.
     Works by calling ack_step_origin and then transforming to the start.

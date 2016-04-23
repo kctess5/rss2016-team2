@@ -12,7 +12,7 @@ from rospy.numpy_msg import numpy_msg
 import navigator
 from visualization_driver import VisualizationDriver
 from helpers import param, euclidean_distance, FrameBuffer, polar_to_euclid
-from pathlib import ack_step
+from pathlib import arc_step, ackerman_radius
 from car_controller.control_module import ControlModule
 import whinytimer
 
@@ -102,6 +102,48 @@ class DynamicModel(object):
         self.max_decel = float(param("dynamics.max_linear_decel")) / float(param("planning_freq"))
         self.max_angular_accel = float(param("dynamics.max_angular_accel")) / float(param("planning_freq"))
 
+        self.raw_data = param("dynamics.steering_prediction")
+        self.raw_data.sort(key=lambda x: x["steering_angle"])
+        self.sorted_angles = map(lambda x: x["steering_angle"], self.raw_data)
+        self.ackerman_transition = map(lambda x: x["ackerman_transition"], self.raw_data)
+
+        self.min_dynamic_angle = self.sorted_angles[0]
+        self.max_dynamic_angle = self.sorted_angles[-1]
+
+    def arc_estimate(self, sample_index, state):
+        if state.speed < self.ackerman_transition[sample_index]:
+            # use ackerman steering
+            return ackerman_radius(param("dynamics.wheelbase"), state.steering_angle)
+        else:
+            # estimate arc radius based off of nonlinear model
+            coeffs = self.raw_data[sample_index]["polynomial_coefficients"]
+            return coeffs[0] * state.speed * state.speed + coeffs[1] * state.speed + coeffs[2]
+
+    def neighbor_samples(self, a):
+        # find closest two entries for the given angle, along with interpolatoin weights.
+        if a < self.min_dynamic_angle or a > self.max_dynamic_angle:
+            return None
+        elif self.min_dynamic_angle == a:
+            return [(1, 0)]
+        elif self.max_dynamic_angle == a:
+            return [(1, len(self.raw_data)-1)]
+        else:
+            for i in xrange(len(self.sorted_angles)-1):
+                if self.sorted_angles[i] == a:
+                    return [(1,i)]
+                elif self.sorted_angles[i] < a and a < self.sorted_angles[i+1]:
+                    # find distance
+                    w1 = a - self.sorted_angles[i]
+                    w2 = self.sorted_angles[i+1] - a
+
+                    # normalize
+                    t = w1 + w2
+                    w1 = 1 - w1 / t
+                    w2 = 1 - w2 / t
+                    return [(w1,i), (w2, i+1)]
+        assert(False)
+        return 
+
     def path_statistics(self, path):
         """ Provides an estimate of:
                 - travel time
@@ -129,22 +171,39 @@ class DynamicModel(object):
 
         return StateRange(min=range_min, max=range_max)
 
+    def estimate_effective_arc(self, state):
+        # return the expected path arc radius of the given state
+        #   special cases: steering = 0 -> 0
+        #                  steering < 0 -> -arc_radius
+        a = abs(state.steering_angle)
+        sign = 1 if state.steering_angle >= 0 else -1
+        effective_radius = 0
+
+        neighbors = self.neighbor_samples(a)
+
+        if a == 0:
+            effective_radius = 0.0
+        elif neighbors == None:
+            # outside of good data range, use ackerman TODO: expand the data range with approximation
+            effective_radius = ackerman_radius(param("dynamics.wheelbase"), a)
+        elif len(neighbors) == 1:
+            # compute value of given angle
+            effective_radius = self.arc_estimate(neighbors[0][1], state)
+        elif len(neighbors) == 2:
+            # interpolate between two nearest angles
+            effective_radius = neighbors[0][0]*self.arc_estimate(neighbors[0][1], state) \
+                             + neighbors[1][0]*self.arc_estimate(neighbors[1][1], state)
+
+        return effective_radius * sign
+
     def propagate(self, state, t=1.0):
         """ Gives an estimate for the final pose after assuming a given state after a given time. t=1 is time time of the next control timestep
         """
-
-        # need to find:
-        #   - translation
-        #   - rotation
-        # dynamical model gives
-        #   - effective path arc radius
-        #   - speed along the path
-        # pathlib can probably be easily be modified to use a given arc radius and speed
-
-        # for now, use ackermann model to propagate the model. TODO: use collected dynamic model
-        propagated = ack_step(param("wheel_base"), state.steering_angle, t * state.speed / param("planning_freq"),
+        effective_radius = self.estimate_effective_arc(state)
+        # print(state.steering_angle, state.speed, effective_radius)
+            
+        propagated = arc_step(effective_radius, t * state.speed / param("planning_freq"),
             state.x, state.y, state.theta)
-
         return State(x=propagated[0], y=propagated[1], theta=propagated[2], \
             steering_angle=state.steering_angle, speed=state.speed)
 
@@ -580,6 +639,7 @@ class ChallengeController(ControlModule):
         self.control_pub.publish(control_msg)
 
 if __name__ == '__main__':
+    # print(dynamics("steering_prediction"))
     try:
         ChallengeController()
     except rospy.ROSInterruptException:

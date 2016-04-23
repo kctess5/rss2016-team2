@@ -21,14 +21,15 @@ def param(raw_name):
     # print("PARAM QUERY:", name)
 
     # grab param object from param server
-    param = rospy.get_param("/local_costmap/" + name[0])
-
+    if name[0] == "dynamics":
+        name.pop(0)
+        param = rospy.get_param("/dynamics/" + name[0])
+    else:
+        param = rospy.get_param("/local_costmap/" + name[0])
+        
     def drill(key, p):
         try:
-            # returns the value corresponding to the given key from the param object p
-            p = filter(lambda x: x.keys()[0] == key, p)[0]
-            k = p.keys()[0]
-            p = p[k]
+            return p[key]
         except:
             rospy.logerr("Could not find key in config: %s", raw_name)
 
@@ -49,17 +50,6 @@ def param(raw_name):
     # print ("RETURNING:", param)
     memo_table[raw_name] = param
     return param
-
-def is_fucked(param):
-    return type(param) is list and type(param[0]) is dict
-
-# unpack the horrible packing of nested ros params into a dict
-def unfuck_params(param):
-    obj = {}
-    for entry in param:
-        for k in entry.keys():
-            obj[k] = unfuck_params(entry[k]) if is_fucked(entry[k]) else entry[k]
-    return obj
 
 def polar_to_euclid(angles, ranges):
     x = np.cos(angles)
