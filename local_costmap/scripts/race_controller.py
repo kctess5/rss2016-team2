@@ -458,10 +458,10 @@ class PathPlanner(HeuristicSearch):
         # print(np.cos(abs(state.theta - goal_state.theta)), goal_state.theta, state.theta)
         # t = d / v
         
-        xp = [0, 0.7]
-        fp = [2.0, 1]
+        # xp = [0, 0.7]
+        # fp = [2.0, 1]
 
-        obstacle_coeff = np.interp(self.obstacles.dist_at(state), xp, fp)
+        # obstacle_coeff = np.interp(self.obstacles.dist_at(state), xp, fp)
 
         # approx_d = euclidean_distance(state, goal_state) /  math.pow(np.cos(abs(state.theta - goal_state.theta)), 1)
         # approx_v = state.speed
@@ -470,7 +470,7 @@ class PathPlanner(HeuristicSearch):
         # return (euclidean_distance(state, goal_state) * obstacle_coeff) / (state.speed+0.0001)
         # bad approximation of the deflection slowdown
         # return euclidean_distance(state, goal_state) /  np.cos(abs(state.theta - goal_state.theta))
-        return euclidean_distance(state, goal_state)
+        return euclidean_distance(state, goal_state) / (param("dynamics.max_speed")*math.pow(np.cos(abs(state.theta - goal_state.theta)), 1))
 
     def goal(self):
         # return the next goal state
