@@ -53,8 +53,8 @@ viz:
         rate_limit: 10
         type: "float"
 
-wheel_base: 0.27
-planning_freq: 4
+# wheel_base: 0.27
+planning_freq: 6
 
 runtime_specific:
   racecar:
@@ -107,7 +107,7 @@ planner:
   # number because it will consider both min/max speed settings
   # this number should be odd
   # the higher it is, the better the found path will be, but the longer it will take
-  angular_branch_factor: 5
+  angular_branch_factor: 4
 
   # if the path is within this distance, the goal is considered met (meters)
   goal_distance_threshold: 0.5

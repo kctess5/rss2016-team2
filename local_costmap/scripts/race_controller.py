@@ -371,26 +371,20 @@ class HeuristicSearch(object):
                 else:
                     heapq.heappush(self.frontier, (score, nss))
 
-
-
         self.step_count += 1
 
     def best(self):
         # returns the best path found
-        if len(self.frontier) == 0:
+        if len(self.frontier) == 0 and len(self.found_paths) == 0:
             return None
+        elif len(self.frontier) == 0:
+            return self.make_path(self.found_paths[0][1])
+        elif len(self.found_paths) == 0:
+            return self.make_path(self.frontier[0][1])
         else:
-            def tree_size(node):
-                return len(node.children) + sum(map(tree_size, node.children))
-
-            def tree_depth(node):
-                if len(node.children) == 0:
-                    return 1
-                else:
-                    return max(map(tree_depth, node.children)) + 1
-            
-            # print(tree_size(self.tree_root), tree_depth(self.tree_root))
-            return self.make_path(self.frontier[0][1]) # CHECK: this might need to be further indexed
+            # TODO: if a reasonably good path is found, we might want to use that by default
+            bp = self.frontier[0][1] if self.frontier[0][0] < self.found_paths[0][0] else self.found_paths[0][1]
+            return self.make_path(bp)
 
     def make_path(self, end_node):
         # a path is a list of control states, in the order of traversal
@@ -470,7 +464,7 @@ class PathPlanner(HeuristicSearch):
         # return (euclidean_distance(state, goal_state) * obstacle_coeff) / (state.speed+0.0001)
         # bad approximation of the deflection slowdown
         # return euclidean_distance(state, goal_state) /  np.cos(abs(state.theta - goal_state.theta))
-        return euclidean_distance(state, goal_state) / (param("dynamics.max_speed")*math.pow(np.cos(abs(state.theta - goal_state.theta)), 1))
+        return euclidean_distance(state, goal_state) / param("dynamics.max_speed")
 
     def goal(self):
         # return the next goal state
