@@ -1,66 +1,104 @@
-## To use this driver:
-# 1. import this function in heading:
-#     from racecar_visualization_driver import VisualizationDriver
-# 2. add the following line in Class "IcarusCar" Initiation:
-#        self.visualization_driver = VisualizationDriver()
-# 3. add the following lines after "candidate_paths" and "path" variables are defined in the "scan_callback" function
-#    self.visualization_driver.publish_candidate_waypoints(candidate_paths)
-#    self.visualization_driver.publish_best_waypoints(path)
-
-
-## To use the desired_heading direction (added 01/20/2016, 1:20am):
-# 4. add the following line in Class "DirectionController" Initiation:
-#        self.visualization_driver = VisualizationDriver()
-# 5. add the following line after "desired_heading" is defined in the "update_scan" function
-#        self.visualization_driver.publish_desired_heading( -1 * self.desired_heading)
+# provides helper functions for running high speed and quality visualizations
 
 import rospy
-import random
-from std_msgs.msg import Header, ColorRGBA
+import time
+from std_msgs.msg import Header, ColorRGBA, Float32
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point, Pose, Vector3
 import math
+from helpers import param, unfuck_params
 
-class VisualizationDriver():
-
+class VisualizationDriver(object):
+    """ The class responsible for visualizing the cars algorithms"""
     def __init__(self):
-        # # Publisher initialization
-        self.candidate_waypoints_pub = rospy.Publisher('candidate_waypoints', Marker, queue_size=10)
-        self.best_waypoints_pub = rospy.Publisher('best_waypoints', Marker, queue_size=10)
-        self.desired_heading_pub = rospy.Publisher('desired_heading', Marker, queue_size=10)
-        self.desired_steering_pub = rospy.Publisher('desired_steering', Marker, queue_size=10)
+        self.viz_params = unfuck_params(param("viz"))
+        self.channels = {}
+        self.last_pubs = {}
 
-        self.best_path_pub = rospy.Publisher('best_path', Marker, queue_size=10)
-        self.candidate_paths_pub = rospy.Publisher('candidate_paths', MarkerArray, queue_size=10)
+        self.add_publisher("path_search.best_path", Marker)
+        self.add_publisher("path_search.viable_paths", MarkerArray)
+        self.add_publisher("path_search.speed", Float32)
+        self.add_publisher("path_search.steering", Float32)
 
-    # Specific Functions
-    def publish_candidate_waypoints(self, candidate_paths, costmap=None):
-        self.candidate_waypoints_pub(self.marker_clear_all())
-        c = 0
-        for path in candidate_paths:
-            c = c + 1;
-            self.publish_waypoints(path, c, 0, 1 , 0, 0.10, self.candidate_waypoints_pub, costmap=costmap);
+        self.add_publisher("goals.next_goal", Marker)
+        self.add_publisher("goals.walls", Marker)
+        self.add_publisher("goals.corridors", Marker)
 
-    def publish_best_waypoints(self, best_path, costmap=None):
-        self.best_waypoints_pub(self.marker_clear_all())
-        self.publish_waypoints(best_path, 100, 1, 0 , 0, 0.25, self.best_waypoints_pub, costmap=costmap);
+        for k in self.channels.keys():
+            self.last_pubs[k] = time.time()
 
-    def publish_best_path(self, best_path, costmap=None):
-        marker = self.marker_from_path(best_path, z=0.1, linewidth=0.06, costmap=costmap)
-        self.best_path_pub.publish(marker)
+    def add_publisher(self, channel_name, channel_type, queue_size=10):
+        self.channels[channel_name] = rospy.Publisher(channel_name.replace(".", "/"), channel_type, queue_size=queue_size)
 
-    def publish_candidate_paths(self, candidate_paths, costmap=None):
+    def get_publisher(self, channel_name):
+        return self.channels[channel_name]
+
+    def has_subscribers(self, channel_name):
+        return self.get_publisher(channel_name).get_num_connections() > 0
+
+    def get_info(self, channel_name):
+        ns = channel_name.split(".")
+        info = self.viz_params["topics"]
+        while ns:
+            info = info[ns[0]]
+            ns.pop(0)
+        return info
+
+    def ratelimit_observed(self, channel_name):
+        rl = float(self.get_info(channel_name)["rate_limit"])
+        if rl == 0:
+            return False
+        return time.time() - self.last_pubs[channel_name] > 1.0 / rl
+
+    # returns true if there are subscribers and the topic is not above the given ratelimit
+    def should_visualize(self, channel_name):
+        return self.has_subscribers(channel_name) and self.ratelimit_observed(channel_name)
+
+    def publish(self, name, msg):
+        self.last_pubs[name] = time.time()
+        self.channels[name].publish(msg)
+
+    def publish_best_path(self, best_path):
+        marker = self.marker_from_path(best_path.states, z=0.1, linewidth=0.06, \
+            lifetime=1.0/float(self.get_info("path_search.best_path")["rate_limit"]))
+        self.publish("path_search.best_path", marker)
+
+    # publishes the whole path tree, making sure not to duplicate path segments
+    def publish_viable_paths(self, path_tree):
         markers = [self.marker_clear_all()]
-        markers += [self.marker_from_path(path,
-                                          index=i,
-                                          linewidth=0.03,
-                                          color=ColorRGBA(0, 1, 0, 1),
-                                          costmap=costmap)
+
+        def non_overlapping_paths(node):
+            # given a tree data structure, this function will return list of lists of the
+            # node "state" attributes
+            # if visualized as a tree, these states will not contain overlapping segments
+            if not node.children:
+                return [node.state]
+            else:
+                paths = []
+
+                for child in node.children:
+                    child_paths = non_overlapping_paths(child)
+
+                    if type(child_paths[0]) == list:
+                        # child is not a leaf node, add self to first path and store
+                        child_paths[0].insert(0, node.state)
+                        paths = paths + child_paths
+                    else:
+                        # this is a leaf node, add self to path and store
+                        child_paths.insert(0, node.state)
+                        paths.append(child_paths)
+
+                return paths
+
+        candidate_paths = non_overlapping_paths(path_tree)
+        markers += [self.marker_from_path(path, index=i, linewidth=0.03, color=ColorRGBA(0, 1, 0, 1), \
+                    lifetime=1.0/float(self.get_info("path_search.best_path")["rate_limit"]))
                     for i, path in enumerate(candidate_paths)]
         marker_array = MarkerArray(markers=markers)
-        self.candidate_paths_pub.publish(marker_array)
 
-    def marker_from_path(self, path, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., costmap=None):
+        self.publish("path_search.viable_paths", marker_array)
+
+    def marker_from_path(self, states, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., lifetime=10.0):
         marker = Marker()
         marker.header = Header(
             stamp=rospy.Time.now(),
@@ -71,7 +109,7 @@ class VisualizationDriver():
         marker.type = Marker.LINE_STRIP
         marker.action = 0 # action=0 add/modify object
         marker.color = color
-        marker.lifetime = rospy.Duration.from_sec(10.)
+        marker.lifetime = rospy.Duration.from_sec(lifetime)
 
         marker.pose = Pose()
         marker.pose.position.z = z
@@ -79,98 +117,12 @@ class VisualizationDriver():
 
         # Fill the marker from the path.
         points = []
-        for waypoint in path.waypoints:
-            x, y = waypoint[0], waypoint[1]
-            points.append(Point(x, y, 0))
+        for waypoint in states:
+            points.append(Point(float(waypoint.x), float(waypoint.y), 0))
         marker.points = points
         marker.colors = []
 
         return marker
-
-    def publish_desired_heading(self, heading):
-        marker = Marker();
-        marker.header.frame_id = "base_link";
-        marker.ns = "Markers_NS";
-        marker.id = 1000000;
-        marker.type = 0;
-        marker.action = 0;
-        marker.pose.position.x = 0;
-        marker.pose.position.y = 0;
-        marker.pose.position.z = 0;
-    
-        points = [];
-        length = 3.0;
-        points.append(Point(0, 0, 0));
-        if heading:
-            points.append(Point(length * math.cos(heading), length * math.sin(heading), 0));
-    
-        marker.points = points;
-    
-        marker.scale.x = 0.1;
-        marker.scale.y = 0.3;
-        marker.scale.z = 0.3;
-        marker.color.a = 1.0;
-        marker.color.r = 1;
-        marker.color.g = 0;
-        marker.color.b = 1;
-        self.desired_heading_pub.publish(marker)
-        
-    def publish_desired_steering(self, steering):
-        marker = Marker();
-        marker.header.frame_id = "base_link";
-        marker.ns = "Markers_NS";
-        marker.id = 1000000;
-        marker.type = 0;
-        marker.action = 0;
-        marker.pose.position.x = 0;
-        marker.pose.position.y = 0;
-        marker.pose.position.z = 0;
-    
-        points = [];
-        length = 1.5;
-        points.append(Point(0, 0, 0));
-        if steering:
-            points.append(Point(length * math.cos(steering), length * math.sin(steering), 0));
-    
-        marker.points = points;
-    
-        marker.scale.x = 0.1;
-        marker.scale.y = 0.3;
-        marker.scale.z = 0.3;
-        marker.color.a = 1.0;
-        marker.color.r = 1;
-        marker.color.g = 1;
-        marker.color.b = 1;
-        self.desired_steering_pub.publish(marker)
-
-    def publish_waypoints(self, path, pathID, colorr, colorg, colorb, markerSize, publisher, costmap=None):
-        # # Assigning unique ID is key for displaying the right amount of points on rviz
-        w = 0;
-        for waypoint in path.waypoints:
-            w = w + 1;
-            marker = Marker();
-            marker.header.frame_id = "base_link";
-            marker.ns = "Markers_NS";
-            marker.id = pathID * 100 + w;
-            marker.type = 2;
-            marker.action = 0;
-            marker.pose.position.x = waypoint[0];
-            marker.pose.position.y = waypoint[1];
-            marker.pose.position.z = 0;
-            if costmap == None:
-                size = markerSize
-            else:
-                x, y = waypoint[0], waypoint[1]
-                factor = costmap.cost_at(waypoint[0], waypoint[1])
-                size = markerSize * (.3 + factor)
-            marker.scale.x = size;
-            marker.scale.y = size;
-            marker.scale.z = size;
-            marker.color.a = 1.0;
-            marker.color.r = colorr;
-            marker.color.g = colorg;
-            marker.color.b = colorb;
-            publisher.publish(marker)
 
     def marker_clear_all(self):
         # Create a marker which clears all.
@@ -178,6 +130,3 @@ class VisualizationDriver():
         marker.header.frame_id = "base_link";
         marker.action = 3 # DELETEALL action.
         return marker
-        
-    def publish_costmap(self):
-        pass

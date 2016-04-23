@@ -8,36 +8,20 @@ import whoami
 import math
 import tf.transformations
 import numpy as np
+from helpers import param
 
 class Navigator(object):
 
     STRAIGHT_AHEAD = [6, 0, 0]
 
-    def __init__(self, visualize=False):
-        self.should_visualize = visualize
+    def __init__(self, viz):
+        self.viz = viz
         self.goal = self.STRAIGHT_AHEAD
 
         # Each wall is a list of 2 points [[x0, y0], [x1, y1]]
         self.walls = []
         # Corridors are derived from walls (the spaces inbetween)
         self.corridors = []
-
-        self.laser_topic = "/scan" if whoami.is_racecar() else "/racecar/laser/scan"
-        self.laser_sub = rospy.Subscriber(self.laser_topic, \
-                LaserScan, self.laser_update, queue_size=1)
-
-        if self.should_visualize:
-            self.viz_pub = {}
-
-            def init_marker_publisher(name):
-                viz_prefix = "local_costmap/navigator/viz/"
-                topic = viz_prefix + name
-                self.viz_pub[name] = rospy.Publisher(topic, Marker, queue_size=10)
-
-            init_marker_publisher("goal")
-            init_marker_publisher("walls")
-            init_marker_publisher("corridors")
-
 
     def laser_update(self, laser_data):
         DISCONTINUITY_THRESHOLD = 1. # meters
@@ -113,11 +97,13 @@ class Navigator(object):
         """
         Output a marker for the goal point, and markers for the walls & corridors
         """
-        if not self.should_visualize:
-            return
-        self.viz_pub["goal"].publish(self._make_pose_marker(self.goal, ColorRGBA(0,1,1,1)))
-        self.viz_pub["walls"].publish(self._make_segment_markers(self.walls, ColorRGBA(1,0,1,1)))
-        self.viz_pub["corridors"].publish(self._make_segment_markers(self.corridors, ColorRGBA(0,1,0,1)))
+
+        if self.viz.should_visualize("goals.next_goal"):
+            self.viz.publish("goals.next_goal", self._make_pose_marker(self.goal, ColorRGBA(0,1,1,1)))
+        if self.viz.should_visualize("goals.walls"):
+            self.viz.publish("goals.walls", self._make_segment_markers(self.walls, ColorRGBA(1,0,1,1)))
+        if self.viz.should_visualize("goals.corridors"):
+            self.viz.publish("goals.corridors", self._make_segment_markers(self.corridors, ColorRGBA(0,1,0,1)))
 
     def _init_marker(self):
         x = Marker()

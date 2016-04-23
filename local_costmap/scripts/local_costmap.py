@@ -1,3 +1,9 @@
+"""
+NOTE: Deprecated
+    - use race_controller.py
+"""
+
+
 #!/usr/bin/env python
 from __future__ import print_function
 import rospy

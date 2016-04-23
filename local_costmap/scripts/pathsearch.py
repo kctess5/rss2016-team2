@@ -1,4 +1,11 @@
 """
+NOTE : Deprecated
+    - use the classes in race_controller.py
+
+"""
+
+
+"""
 Search for paths.
 """
 

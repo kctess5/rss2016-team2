@@ -1,32 +1,125 @@
 ---
-# System flags
-vm_visualize: true
-racecar_visualize: false
-# Visualize every n frames. Set to 0 to visualize as fast as possible.
-racecar_visualize_everyn: 5
+# ---------------- #
+# General parameters
+  # visualization levels:
+  #   0 - no viz, no impact on runtime
+  #   1 - runtime viz, small but acceptable impact on runtime
+  #   2 - extra viz, may slow down runtime
+  #   3 - debug viz, may significantly slow down runtime
+# ---------------- #
 
-# Local Explorer flags
-planning_freq: 10
-backup_speed: 0.0
-backup_duration: 1.0
+viz:
+  - topics:
+    - goals:
+      - next_goal: 
+        - level: 1
+        # given in published messages/second
+        - rate_limit: 5
+        - type: "pose"
+        - color: [0,1,1,1]
+      - corridors:
+        - level: 1
+        - rate_limit: 5
+        - type: "segment"
+        - color: [0,1,0,1]
+      - walls:
+        - level: 2
+        - rate_limit: 5
+        - type: "segment"
+        - color: [1,0,1,1]
+    - obstacles:
+      - inadmissible:
+        - level: 3
+        - rate_limit: 3
+        - type: "omap"
+        - color: [0,0,0,1]
+    - path_search:
+      - best_path:
+        - level: 1
+        - rate_limit: 5
+        - type: "path"
+        - color: [0,0,0,1]
+      - viable_paths:
+        - level: 2
+        - rate_limit: 5
+        - type: "path"
+        - color: [0,0,0,1]
+      - speed:
+        - level: 1
+        - rate_limit: 10
+        - type: "float"
+      - steering:
+        - level: 1
+        - rate_limit: 10
+        - type: "float"
 
-# Path Picker (in LocalExplorer) flags
-min_cost_pick: 0
-cost_weighted_prob: 1
-cost_weighted_prob_tunable: 2
-# The exploration parameter for cost_weighted_prob_tunable method
-exploration_level: 1 # default: perform the same as cost_weighted_prob
+wheel_base: 0.27
+planning_freq: 4
 
-# Path Generator flags
-max_path_length: 2.7 # meters
-fixed_speed: 0.6
-path_candidates: 11
-max_curve: 0.4
-path_discretization: 10
-wheel_base: 0.325
-override_speed: 0.75
-override_speed_min: 0.2
+runtime_specific:
+  - racecar:
+    - scan_topic: "/scan"
+    - visualize_level: 1
+  - not_racecar:
+    - scan_topic: "/racecar/laser/scan"
+    - visualize_level: 2
 
-# Path Evaluator flags
-impassible_threshold: .2
+# --------------------------- #
+# obstacle avoidance parameters
+# --------------------------- #
+
+# obstacle map size and discretization (bins/meter)
+obstacle_map:
+  - discretization: 5
+  - xmin: -3
+  - xmax: 10
+  - ymin: -8
+  - ymax: 8
+  # minimum distance to nearest obstacle to be considered admissible
+  - min_distance: 0.3
+  # number of cells worth of spacing between admissibility check waypoints
+  # higher is faster, but might result in jumping over obstacles
+  - admissible_hop: 3.0
+
+# ----------------------- #
+# Dynamics Model Parameters
+# ----------------------- #
+
+dynamics:
+  # max acceleration in meters/sec or rad/sec
+  # for now these are guesses, testing should be used to find the optimal values
+  - max_linear_accel: 5
+  - max_linear_decel: -8
+  - max_angular_accel: 1.5
+  
+  # bounds on mechanical capabilities
+  # 10mph ~= 4.47 m/s
+  - max_speed: 3
+  - max_deflection: 0.35
+
+# --------------------- #
+# Path Planner Parameters
+# --------------------- #
+
+planner:
+  # number of angle settings to consider at each speed
+  # the real number of candidate paths will be twice this
+  # number because it will consider both min/max speed settings
+  # this number should be odd
+  # the higher it is, the better the found path will be, but the longer it will take
+  - angular_branch_factor: 5
+
+  # if the path is within this distance, the goal is considered met (meters)
+  - goal_distance_threshold: 0.5
+
+# ------------------ #
+# Emergency Parameters
+# ------------------ #
+
+emergency:
+  # when the robot has an old path it can execute but is considered stuck, it applies
+  # breaks as fast as possible while following the old path. This damp factor is applied to
+  # steering to potentially smooth the path as the car stops. Set to 1 to follow original path
+  - stop_path_steering_damp_factor: 1.0
+
 ...

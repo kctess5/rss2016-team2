@@ -1,0 +1,32 @@
+---
+# System flags
+vm_visualize: true
+racecar_visualize: false
+# Visualize every n frames. Set to 0 to visualize as fast as possible.
+racecar_visualize_everyn: 5
+
+# Local Explorer flags
+planning_freq: 1
+backup_speed: 0.0
+backup_duration: 1.0
+
+# Path Picker (in LocalExplorer) flags
+min_cost_pick: 0
+cost_weighted_prob: 1
+cost_weighted_prob_tunable: 2
+# The exploration parameter for cost_weighted_prob_tunable method
+exploration_level: 1 # default: perform the same as cost_weighted_prob
+
+# Path Generator flags
+max_path_length: 2.7 # meters
+fixed_speed: 0.6
+path_candidates: 11
+max_curve: 0.4
+path_discretization: 10
+wheel_base: 0.325
+override_speed: 0.75
+override_speed_min: 0.2
+
+# Path Evaluator flags
+impassible_threshold: .2
+...
