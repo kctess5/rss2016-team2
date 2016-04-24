@@ -15,6 +15,7 @@ from helpers import param, euclidean_distance, FrameBuffer, polar_to_euclid
 from pathlib import arc_step, ackerman_radius
 from car_controller.control_module import ControlModule
 import whinytimer
+import dubins
 
 # Notes: 
 #   - Relies on the following external files:
@@ -445,7 +446,7 @@ class PathPlanner(HeuristicSearch):
         return self.obstacles.is_admissible(state)
 
     def heuristic(self, state, goal_state):
-        print
+        # print
         # print((int(state.x), int(state.y), state.theta), (int(goal_state.x), int(goal_state.y), goal_state.theta))
         # print(np.cos(abs(goal_state.theta - state.theta)))
         # return an estimate for cost to go between the given state and the goal state
@@ -469,9 +470,15 @@ class PathPlanner(HeuristicSearch):
         # return (euclidean_distance(state, goal_state) * obstacle_coeff) / (state.speed+0.0001)
         # bad approximation of the deflection slowdown
         # return euclidean_distance(state, goal_state) /  np.cos(abs(state.theta - goal_state.theta))
-        if euclidean_distance(state, goal_state) < abs(state.theta - goal_state.theta)*param("dynamics.r_min"):
-            print ("HELPING")
-        return max(euclidean_distance(state, goal_state), abs(state.theta - goal_state.theta)*param("dynamics.r_min")) / param("dynamics.max_speed")
+
+        # return max(euclidean_distance(state, goal_state), abs(state.theta - goal_state.theta)*param("dynamics.r_min")) / param("dynamics.max_speed")
+        q0 = (state.x, state.y, state.theta)
+        q1 = (goal_state.x, goal_state.y, goal_state.theta)
+        turning_radius = 1.3
+
+        return dubins.path_length(q0, q1, turning_radius) / param("dynamics.max_speed")
+
+
 
     def goal(self):
         # return the next goal state
