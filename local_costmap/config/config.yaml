@@ -54,7 +54,7 @@ viz:
         type: "float"
 
 # wheel_base: 0.27
-planning_freq: 6
+planning_freq: 5
 
 runtime_specific:
   racecar:
@@ -107,10 +107,14 @@ planner:
   # number because it will consider both min/max speed settings
   # this number should be odd
   # the higher it is, the better the found path will be, but the longer it will take
-  angular_branch_factor: 4
+  angular_branch_factor: 3
 
   # if the path is within this distance, the goal is considered met (meters)
   goal_distance_threshold: 0.5
+
+  # if there is now path, and the car is stopped, it will
+  # start to back up in a straight line at this speed
+  backup_speed: -1.0
 
 # ------------------ #
 # Emergency Parameters

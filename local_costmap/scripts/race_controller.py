@@ -434,7 +434,12 @@ class PathPlanner(HeuristicSearch):
         
     def cost(self, state):
         # time is our optimization target, so the cost of any given segment is constant
-        return 1.0 / float(param("planning_freq"))
+        xp = [0, 0.6, 1000]
+        fp = [2.0, 1.0, 1.0]
+
+        obstacle_coeff = np.interp(self.obstacles.dist_at(state), xp, fp)
+        # return 1.0 / float(param("planning_freq"))
+        return obstacle_coeff / float(param("planning_freq"))
 
     def is_admissible(self, state):
         return self.obstacles.is_admissible(state)
@@ -464,7 +469,9 @@ class PathPlanner(HeuristicSearch):
         # return (euclidean_distance(state, goal_state) * obstacle_coeff) / (state.speed+0.0001)
         # bad approximation of the deflection slowdown
         # return euclidean_distance(state, goal_state) /  np.cos(abs(state.theta - goal_state.theta))
-        return euclidean_distance(state, goal_state) / param("dynamics.max_speed")
+        if euclidean_distance(state, goal_state) < abs(state.theta - goal_state.theta)*param("dynamics.r_min"):
+            print ("HELPING")
+        return max(euclidean_distance(state, goal_state), abs(state.theta - goal_state.theta)*param("dynamics.r_min")) / param("dynamics.max_speed")
 
     def goal(self):
         # return the next goal state
@@ -571,18 +578,26 @@ class ChallengeController(ControlModule):
         # continue the next path segment as planned
         self.execute_state(self.next_path_segment())
 
+    def back_up(self):
+        next_state = State(x=0, y=0, theta=0, speed=param("planner.backup_speed"), steering_angle=0)
+        self.execute_state(next_state)
+
     def stuck_control(self):
         # what to do when the car is stuck according to the path planner
         # for now, just stop as fast as possible while continuing path TODO: maybe do something a bit fancier
-        self.stop_path()
         
+        if (self.state_history[-1].speed > 0):
+            self.stop_path()
+        else:
+            self.back_up()
+
     def compute_control(self, event=None):
         if not self.obstacles.first_laser_recieved:
             print("Waiting for laser data...")
             return False
 
         start_state = State(x=0, y=0, theta=0, \
-            steering_angle=self.state_history[-1].steering_angle, speed=self.state_history[-1].speed)
+            steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
         self.path_planner.reset(start_state=start_state)
         # search for a viable path, taking at most half the available computation time
         self.path_planner.search(time_limit=0.5/float(param("planning_freq")))
