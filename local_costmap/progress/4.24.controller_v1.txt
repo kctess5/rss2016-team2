@@ -1,0 +1,190 @@
+The controller was recently refactored, here is an overview of how our code works:
+
+Controller Overview:
+	Goal planning -> GoalManager
+		- objective: tell the racecar to go by providing a (x,y,theta) goal state whenever called
+		- notes:
+			- Goal points should be ordered in a way that makes sense, i.e. go to the close goals before the far ones
+			- Goal points should point (theta) towards subsequent goal points in the path
+			- Goal points should be smoothed so that the goal is not frequently changing with time
+				- this is important because the path planner is very agressive -> even a small time with an incorrect goal point will cause major maneuvering
+		- subcomponents:
+			Corridor navigation -> navigator.Navigator
+				- objective: pick which corridor to go down given the laser scanner data, and decide a (x,y,theta) goal state in local coordinates
+			Goal point detection -> [not present yet]
+				- objective: find green goals on the floor from the camera, and place an (x,y) marker there in local coordinates
+
+	Kinodynamic path search
+		- objective: plan an optimal path between the current state, and the goal state given measured dynamics of the car
+		- approach:
+
+			A* search through controller state space -> use open loop model to predict motion, search for sets of control decisions that cause desirable motion
+				Nomenclature:
+					- Control state -> (x,y,theta,steering_angle,speed)
+						- x,y,theta are in local coorinates
+						- steering_angle, speed correspond to car control decisions
+					- Path -> [State], to be executed in order
+					- Execution frequency -> how quickly States are published to the car controller
+					- Plan Frequency -> how frequently new paths are planned
+				
+				Cost Metric: Traversal time
+					- Each path of length n will have equivalent cost: 1/(execution frequency)
+					- we can add terms to account for specific desired behaviors, but doing so is undesirable because the weights are hard to optimize
+				
+				Heuristic: Dubin's curve length / max_speed
+					- https://en.wikipedia.org/wiki/Dubins_path
+					- TODO: this needs to be improved to consider maximal travel speed given the used dubin's path radius or it is incorrect
+				
+				Neighbors:
+					- given a control state, this returns a set of potential neighboring states to consider
+					- uses speed and acceleration bounds to determine a set of reachable speeds
+					- uses steering angle and angular acceleration bounds to determine reachable angles
+					- discretizes the {speed range,steering angle range} into a set of control options
+					- each control option is propagated forward in space according to the dynamic model
+						- propagate == predict the (x,y,theta) that will result from executing the given control state
+						- this is very important, because if we can accurately predict where the car will actually go, we can plan more effectively
+						- this is built upon an interpolated dataset gathered from doing donuts with the car
+							- major flaw: only captured data for the constant velocity case, assumes acceleration has little impact on skid dynamics
+								- this can be mitigated with conservative angluar/linear acceleration bounds
+				
+				Admissibility:
+					- objective: return true if the path does not involve a crash, false otherwise
+					- implementation:
+						- Finds the necessary discretization, and propagates a control state forward in time by fractions of a control step
+						- If any of the intermediate states are < a distance threshold according to the obstacle map, the control state is rejected
+					- notes:
+						- might want to consider a higher admissibility threshold for higher velocity paths, so that it will plan more conservatively
+					  in tightly constrained regions
+				
+				Algorithm Execution:
+					- Any time algorithm - it keeps expanding the lowest cost node until it is out of time
+					- Returns a path, even if the goal was not met by that path because search terminated early
+
+
+		- notes: 
+			- if done right, this approach as a good shot of building some very high speed paths, even with drifting.
+			- found paths are very easy to execute, because they correspond directly to control decisions
+
+	Emergency path planning:
+		- if the path planner fails to find any admissible path, the emergency planner takes over
+		- Continues last known path trajectory, except it applies maximum deceleration
+		- TODO: this needs to be better so that the robot is more likely to recover without crashing or getting stuck
+			- we can use a two tiered approach -> crash, impending crash
+				- if the robot is in the crash zone, stop immediately and back up
+				- if the robot is in the impending crash zone, choose the path that:
+					a) doesn't go into the crash zone
+					b) results in the highest distance metric at the path endpoint
+					- if no such path is available, stop as fast as possible while navigating to increase distance from obstacles
+				- ideally this approach will degenerate to a "go down the center of the hallway" controller when the hallway
+				  is less than 2*(impending crash zone width)
+
+	ObjectManager:
+		- objective: centralized place to subscribe to topics
+		- can easily add callbacks to subscribe to any kind of ros info stream
+
+	DynamicModel:
+		- implements the propagate function by interpolating between linear and nonlinear equations fit to experimentally collected data
+		- TODO: implement the curvature->max_speed function for use in the heuristic based off of the collected data
+
+	ObstacleMap:
+		- maintains the occupancy grid around the car
+		- takes in scanner data, performs a distance transform
+		- provides a fast way to lookup whether a state is admissible or not, called many times for any given search
+
+	ChallengeController:
+		- instantiates and manages high level control flow
+
+	VisualizationDriver:
+		- centralized place to deal with visualization
+		- provides should_visualize(channel_name), which returns true if both:
+			a) there are subscribers to that channel
+			b) the configured rate limit is observed
+		- use it
+
+	param:
+		- centralized place to fetch any parameter from configuration
+		- dynamics.yaml
+			- includes the model of the car
+			- includes bounds on acceleration
+		- config.yaml
+			- all other parameters
+		- the param lookup is memoized, so it should be pretty fast shortly after startup
+
+Testing notes:
+	- We tested the car today with the first iteration of the path planner. It was a bit sketchy, and didn't do very well, but I think the 
+	  problems are not insurmountable.
+	- The controller has trouble dealing with sticky situations and high speed
+		- Potential causes:
+			- search state space is too large, it has so many control options in a small spatial area that it doesn't realize that none of the options
+			  actually work further down the road because search is not allowed sufficent time
+			  	- we could effectively reduce the branch factor of the search function by planning accelerations rather than individual control states
+			  		How to:
+				  		state space: (x,y,theta,steering_angle,speed) -> (x,y,theta,steering_angle,speed,angular_accel, linear_accel)
+				  		
+				  		neighbor function: generate a set of possible control decisions over a longer period of time by setting acceleration
+				  			- discretize linear_accel options: (max_decel, unity, max_accel)
+				  				- need to have bounds on boths ends of the range 
+				  					-> i.e. don't set an acceleration that would cause > max speed or < min_speed
+				  			- discretize angular accel options according to the angular_branch_factor
+				  			- this function has to consider the bounds placed on the car dynamics
+				  		
+				  		propagate function: 
+				  			- needs to use the start state and acceleration to predict the next n control states
+				  			- then call DYNAMICS.propagate for each intermediate state 
+				  		
+				  		heuristic:
+				  			- the same
+				  			- might want to add a term to avoid sections with impending collisions
+				  				- call admissible on the states straight ahead of the end state to some fixed distance, add some cost if it fails the test
+
+				  	Notes:
+				  	- this can be implemented as another class which inherits HeuristicSearch, potentially with minor modifications to HeuristicSearch (mostly in make_path)
+			  		- this approach has more computational needs per node extension, but this is ok because:
+			  			- there are several control decisions per node, so planning can be slower than path execution
+			  				i.e. 1 segment -> ~5 future (steering_angle,speed) states
+			  			- each node in the tree is much further apart
+			  			- basically, it's doing a similar search as before, but it has a much lower branch factor per (steering_angle,speed) state
+
+			  		- parameterize the number of control points per path segment
+			  			- setting control frequency higher results in shorter intermediate nodes, but smoother acceleration curves
+			  			- setting path planning frequency lower means that larger segments of paths will be executed between replans
+			  				- too low and the robot risks crashing, and the search tree becomes outdated between iterations
+			  				- too high and the robot won't be able to plan far enough ahead
+			  				- profiling/optimizing the code will help mitigate this tradeoff
+			- it doesn't discount states which lead to impending doom -> can be fixed relatively easily
+
+	- The goal planner has a lot of false positives which frequently makes the car drive into walls
+		- Partially due to lack of goal point smoothing
+		- Partially due to problems with the corridor detection code in the presence of obstacles and bad data
+		- We have a rosbag now of the car driving around the track, that can be used for algorithm development
+		- It often sets goal states which are very close to the car,
+			- this is bad because the heuristic is unforgiving, and will cause some very extreme paths to be generated to meet that goal
+			- we need to set the goals in a way that is generally achievable without insane control effort
+			- planning navigation goals at the most distant corridor on the horizon, rather than in between nearby obstacles and walls, will allow
+			  the A* search to pick paths that generally move it in the right direction, while leaving the local planner up to dealing with intermediate obstacles
+
+	- Considering the path planning issues, the algorithm does a fairly good job of not crashing
+		- Good at bailing out at the last minute, but we could add an emergency planner for when no paths are admissible
+		  	- pick the heading that results in the most distance from the nearest obstacle while performing the stop maneuver
+		- It needs to have more fear for paths that will cause imminent collision to actively avoid the situations
+			-  maybe it makes sense to look at the numerical gradient of the distance field in the path cost function
+		- I think reducing the search space density will make it even better by default
+
+Concrete todos:
+	- improve goal state planning
+	- incorporate vision based goal detection
+	- improve the heuristic to return a more accurate path traversal estimate for a given dubins curve
+		- implement the curvature->max_speed function based off of the collected data
+	- add an emergency planner that will take control when the path planner returns no admissible paths
+		- our robot could effectively gracefully degrade into lab 6 in very tight regions where path planning doesn't work
+	- proactively avoid states with impending doom
+		- check a line ahead of the end of each path (more details above)
+	- change search to consider constant acceleration path segments
+		- should allow longer term planning at higher speeds
+		- decoupled path execution from path planning
+		- lower branch factor
+		- see above for more details
+	- experimentally determine angular/linear accleration bounds
+	- optimize our algorithms
+		- we should profile and port things to Cython as necessary
+		- will probably focus on this once the general approach is more solid
