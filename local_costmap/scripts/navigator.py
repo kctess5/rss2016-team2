@@ -12,7 +12,8 @@ from helpers import param
 
 class Navigator(object):
 
-    STRAIGHT_AHEAD = [6, 0, 0]
+    STRAIGHT_AHEAD = [param("navigator.straight_ahead_distance"), 0, 0]
+    MIN_WALL_LENGTH = param("navigator.min_wall_length")
 
     def __init__(self, viz):
         self.viz = viz
@@ -24,9 +25,10 @@ class Navigator(object):
         self.corridors = []
 
     def laser_update(self, laser_data):
-        DISCONTINUITY_THRESHOLD = 1. # meters
+        DISCONTINUITY_THRESHOLD = param("navigator.min_corridor_width")
         INF = 1000.
         ranges = np.array(laser_data.ranges)
+        print "Set STRAIGHT_AHEAD to", laser_data.range_max
         # Set range_max points to be really far, to force a discontinuity
         # (this might be only needed for the simulator)
         ranges[ranges + 0.1 > laser_data.range_max] = INF
@@ -43,7 +45,10 @@ class Navigator(object):
             indices = np.where(labeled == label)[0]
             i_left = indices[0]
             i_right = indices[-1]
-            if i_right - i_left < 5:
+            #if i_right - i_left < 5:
+            if self._polar_length(
+                    angles[i_left], ranges[i_left],
+                    angles[i_right], ranges[i_right]) < self.MIN_WALL_LENGTH:
                 # Skip really short "walls"
                 continue
             if ranges[i_left] == INF:
@@ -77,8 +82,10 @@ class Navigator(object):
     def _length(self, segment):
         [[x0, y0],[x1, y1]] = segment
         l = math.sqrt((x1 - x0)**2 + (y1 - y0)**2)
-        # print l
         return l
+
+    def _polar_length(self, a1, d1, a2, d2):
+        return self._length([self._polar_to_point(a1,d1), self._polar_to_point(a2, d2)])
 
     def camera_update(self, camera_data):
         """

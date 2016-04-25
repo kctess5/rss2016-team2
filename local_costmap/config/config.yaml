@@ -97,6 +97,20 @@ obstacle_map:
 #   max_speed: 3
 #   max_deflection: 0.35
 
+# ----------------------- #
+# Navigator Parameters
+# (wall/corridor detection)
+# ----------------------- #
+navigator:
+  # When we're in a corridor w/ no turns, how far out to set the goal
+  straight_ahead_distance: 6
+
+  # Anything shorter is not a wall
+  min_wall_length: 0.5
+
+  # Anything shorter is not a corridor
+  min_corridor_width: 1.
+
 # --------------------- #
 # Path Planner Parameters
 # --------------------- #
