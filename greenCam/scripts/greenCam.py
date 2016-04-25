@@ -28,7 +28,7 @@ def pixel2world(row,col):
 	return (x,y)
 
 def find_green(image):
-	height = image.shape[0]
+	height,width = image.shape[:2]
 	roi = image[height/2:,:]
 	hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
 	mask = cv2.inRange(hsv_img, HSV_lower_thresh, HSV_upper_thresh)
@@ -39,13 +39,13 @@ def find_green(image):
 	countours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
 	for c in contours:
 		M = cv2.moments(c)
-		px,py,area = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]), M["m00"])
+		px,py,area = (int(M["m10"] / M["m00"]) + width, int(M["m01"] / M["m00"]), M["m00"])
 		if area >= MIN_AREA_THRESH:
 			x,y = pixel2world(px,py)
 			expected_area = ((C_y/(float)y)**2.)*C_a
 			if (expected_area*(1.-area_error_thresh))<= area <=(expected_area*(1.+area_error_thresh)):
 				centroids.append((x,y,0.0))
-				pixels.append((px,py,0.0))
+				pixels.append((px-width,py+height,0.0))
 	return centroids, pixels
 
 
