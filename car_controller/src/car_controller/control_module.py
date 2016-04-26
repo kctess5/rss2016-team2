@@ -10,18 +10,34 @@ class ControlModule(object):
 		self.node = rospy.init_node(module_name, anonymous=True)
 		self.control_pub = rospy.Publisher(publish_topic, HighControl, queue_size=10)
 		self.enabled_sub = rospy.Subscriber('/car/enabled', String, self._enabled_callback)
+		self.enabled_state = False
 
 		rospy.sleep(0.1)
 		self.subscribe()
 
 	def _enabled_callback(self, which):
-		print (which, self.module_name, str(which.data).strip() == str(self.module_name).strip(), which.data is self.module_name, type(self.module_name), type(which.data))
-		if which.data == self.module_name:
-			self.enabled()
+		data = which.data.split(":")
+		if data[0] == self.module_name:
+			if data[1] == "true":
+				self.enabled_state = True
+				self.enabled()
+			elif data[1] == "false":
+				self.enabled_state = False
+				self.disabled()
+			else:
+				print("UNKNOWN STATE:", which)
+				self.enabled_state
 
 	# called when this module is enabled
 	def enabled(self):
 		pass
+
+	# called when this module is disabled
+	def disabled(self):
+		pass
+
+	def is_enabled(self):
+		return self.enabled_state
 
 	def make_message(self, msg_type):
 		control_msg = HighControl()

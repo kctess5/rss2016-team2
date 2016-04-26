@@ -3,13 +3,25 @@ from __future__ import print_function
 import rospy
 
 import numpy as np
-import math
+import math, collections, recordclass
 from scipy import ndimage
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Point, Quaternion, Pose
 import whoami
 
 memo_table = {}
+
+Point = collections.namedtuple("Point", ["x", "y"])
+State = collections.namedtuple("State", ["x", "y", "theta", "steering_angle", "speed"])
+AccelerationState = collections.namedtuple("AccelerationState", ["control_states", "steering_velocity", "linear_accel"])
+
+Path  = collections.namedtuple("Path", ["states"])
+# min and max are both States, with values set to the min/max of each field
+StateRange = collections.namedtuple("StateRange", ["min", "max"])
+# wraps a state with additional information for search
+SearchNode = collections.namedtuple("SearchNode", ["state", "cost", "heuristic", "parent", "tree_node"])
+# used for recreating the search tree in visualization
+TreeNode = recordclass.recordclass("TreeNode", ["state", "children"])
 
 # fetch the info from ros for a given dot separated path in the yaml config file
 def param(raw_name):

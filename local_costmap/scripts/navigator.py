@@ -12,7 +12,7 @@ from helpers import param
 
 class Navigator(object):
 
-    STRAIGHT_AHEAD = [6, 0, 0]
+    STRAIGHT_AHEAD = [15, 0, 0]
 
     def __init__(self, viz):
         self.viz = viz

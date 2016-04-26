@@ -6,7 +6,7 @@ from std_msgs.msg import Header, ColorRGBA, Float32
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point, Pose, Vector3
 import math
-from helpers import param
+from helpers import param, State, AccelerationState, Path, StateRange, SearchNode, TreeNode
 
 class VisualizationDriver(object):
     """ The class responsible for visualizing the cars algorithms"""
@@ -16,6 +16,7 @@ class VisualizationDriver(object):
         self.last_pubs = {}
 
         self.add_publisher("path_search.best_path", Marker)
+        self.add_publisher("path_search.complete_paths", MarkerArray)
         self.add_publisher("path_search.viable_paths", MarkerArray)
         self.add_publisher("path_search.speed", Float32)
         self.add_publisher("path_search.steering", Float32)
@@ -59,9 +60,23 @@ class VisualizationDriver(object):
         self.channels[name].publish(msg)
 
     def publish_best_path(self, best_path):
-        marker = self.marker_from_path(best_path.states, z=0.1, linewidth=0.06, \
+        marker = self.marker_from_path(best_path.states, z=0.1, linewidth=0.09, \
             lifetime=1.0/float(self.get_info("path_search.best_path")["rate_limit"]))
         self.publish("path_search.best_path", marker)
+
+    def publish_complete_path(self, complete_paths):
+        # marker = self.marker_from_path(best_path.states, z=0.1, linewidth=0.09, \
+        #     lifetime=1.0/float(self.get_info("path_search.best_path")["rate_limit"]))
+        # self.publish("path_search.complete_paths", marker)
+
+        markers = [self.marker_clear_all()]
+        markers += [self.marker_from_path(path.states, index=i, linewidth=0.05, color=ColorRGBA(0, 0, 1, 1), \
+                    lifetime=1.0/float(self.get_info("path_search.best_path")["rate_limit"]))
+                    for i, path in enumerate(complete_paths)]
+        
+        marker_array = MarkerArray(markers=markers)
+        self.publish("path_search.complete_paths", marker_array)
+
 
     # publishes the whole path tree, making sure not to duplicate path segments
     def publish_viable_paths(self, path_tree):
@@ -91,12 +106,22 @@ class VisualizationDriver(object):
                 return paths
 
         candidate_paths = non_overlapping_paths(path_tree)
+
+        if type(candidate_paths[0][0]) == AccelerationState:
+            candidate_paths = map(lambda path: 
+                reduce(lambda x, y: x+y,
+                    map(lambda segment: segment.control_states, path)), 
+                        candidate_paths)
+
         markers += [self.marker_from_path(path, index=i, linewidth=0.03, color=ColorRGBA(0, 1, 0, 1), \
                     lifetime=1.0/float(self.get_info("path_search.best_path")["rate_limit"]))
                     for i, path in enumerate(candidate_paths)]
         marker_array = MarkerArray(markers=markers)
 
         self.publish("path_search.viable_paths", marker_array)
+
+    # def publish_viable_accel_paths
+
 
     def marker_from_path(self, states, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., lifetime=10.0):
         marker = Marker()

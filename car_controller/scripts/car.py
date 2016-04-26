@@ -193,14 +193,16 @@ class Car(object):
 			'spline_control': SplineDrive(self.llDriver)
 		}
 
+		rospy.on_shutdown(lambda: self.on_shutdown())
+
 	def getActiveModule(self):
 		if self.active_module == None:
 			return None
 		return self.modules[self.active_module]
 
-	def publishEnabled(self, module):
-		print("PUBLISHING_ENABLED")
-		self.enabled_pub.publish(module)
+	def publishEnabled(self, module, enabled):
+		print("PUBLISHING_ENABLED", module, enabled)
+		self.enabled_pub.publish(module + (":true" if enabled else ":false"))
 
 	def joyCallback(self, joy_msg):
 		# toggle the the active state of the low level motor driver
@@ -210,7 +212,7 @@ class Car(object):
 			if joy_msg.buttons[Y_BUTTON] == 1:
 				rospy.loginfo("Toggling module: %s", self.getActiveModule())
 				self.llDriver.toggle_enabled()
-				self.publishEnabled(self.getActiveModule())
+				self.publishEnabled(self.getActiveModule(), self.llDriver.enabled)
 				
 			if joy_msg.buttons[X_BUTTON] == 1 and len(self.modules):
 				self.active_module = (self.active_module + 1) % len(self.modules)
@@ -248,6 +250,8 @@ class Car(object):
 			if self.active_module == None:
 				self.active_module = 0
 
+		self.publishEnabled(self.getActiveModule(), self.llDriver.enabled)
+
 	def unsubscribe(self, control_msg):
 		# remove the given control module from the registry
 		rospy.loginfo("Removing module %s to the high level controller", control_msg.module)
@@ -263,6 +267,11 @@ class Car(object):
 					self.active_module = 0
 		else:
 			rospy.loginfo("Module %s does not already exist in the racecar.", control_msg.module)
+
+	def on_shutdown(self):
+		print("KILLING")
+		self.publishEnabled(self.getActiveModule(), False)
+
 
 if __name__ == '__main__':
 	car = Car()
