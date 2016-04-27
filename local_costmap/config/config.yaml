@@ -44,6 +44,11 @@ viz:
         rate_limit: 5
         type: "path"
         color: [0,0,0,1]
+      complete_paths:
+        level: 2
+        rate_limit: 5
+        type: "path"
+        color: [0,0,0,1]
       speed:
         level: 1
         rate_limit: 10
@@ -54,14 +59,15 @@ viz:
         type: "float"
 
 # wheel_base: 0.27
-planning_freq: 10
+planning_freq: 5
+execution_freq: 12
 
 runtime_specific:
   racecar:
     scan_topic: "/scan"
     visualize_level: 1
   not_racecar:
-    scan_topic: "/racecar/laser/scan"
+    scan_topic: "/scan_throttle"
     visualize_level: 2
 
 # --------------------------- #
@@ -79,7 +85,7 @@ obstacle_map:
   min_distance: 0.3
   # number of cells worth of spacing between admissibility check waypoints
   # higher is faster, but might result in jumping over obstacles
-  admissible_hop: 3.0
+  admissible_hop: 2.0
 
 # ----------------------- #
 # Dynamics Model Parameters
@@ -103,13 +109,13 @@ obstacle_map:
 # ----------------------- #
 navigator:
   # When we're in a corridor w/ no turns, how far out to set the goal
-  straight_ahead_distance: 6
+  straight_ahead_distance: 10
 
   # Anything shorter is not a wall
   min_wall_length: 0.5
 
   # Anything shorter is not a corridor
-  min_corridor_width: 1.
+  min_corridor_width: 2.0
 
 # --------------------- #
 # Path Planner Parameters
@@ -121,7 +127,7 @@ planner:
   # number because it will consider both min/max speed settings
   # this number should be odd
   # the higher it is, the better the found path will be, but the longer it will take
-  angular_branch_factor: 4
+  angular_branch_factor: 3
 
   # if the path is within this distance, the goal is considered met (meters)
   goal_distance_threshold: 0.5
@@ -129,6 +135,12 @@ planner:
   # if there is now path, and the car is stopped, it will
   # start to back up in a straight line at this speed
   backup_speed: -1.0
+
+  # number of control states per branch
+  control_decisions_per_segment: 5
+
+  # max planning distance. paths are terminated when they are above this (meters)
+  max_planning_dist: 5
 
 # ------------------ #
 # Emergency Parameters

@@ -28,7 +28,7 @@ class Navigator(object):
         DISCONTINUITY_THRESHOLD = param("navigator.min_corridor_width")
         INF = 1000.
         ranges = np.array(laser_data.ranges)
-        print "Set STRAIGHT_AHEAD to", laser_data.range_max
+        # print "Set STRAIGHT_AHEAD to", laser_data.range_max
         # Set range_max points to be really far, to force a discontinuity
         # (this might be only needed for the simulator)
         ranges[ranges + 0.1 > laser_data.range_max] = INF
