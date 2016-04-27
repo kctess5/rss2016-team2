@@ -16,14 +16,20 @@ from helpers import State, AccelerationState, Path, StateRange, SearchNode, Tree
 from pathlib import arc_step, ackerman_radius
 from car_controller.control_module import ControlModule
 import whinytimer
-import dubins
 from profilehooks import profile, timecall
 # from dynamical import DynamicModel
 
 # Check that the dubins library supports path_length_segs.
-if not hasattr(dubins.DubinsPath((0,0,0), (0,0,0), 1.), "path_length_segs"):
-    raise RuntimeError("Package 'dubins' does not support dubins.DubinsPath().path_length_segs. "
-                       "Run `sudo python setup.py install` in the patched pydubins directory to fix this.")
+try:
+    import dubins
+except ImportError:
+    raise RuntimeError("Package 'dubins' does not support dubins.DubinsPath().path_length_segs.\n"
+                       "Run $ sudo pip install git+https://github.com/mlsteele/pydubins.git")
+try:
+    dubins.DubinsPath((0,0,0), (0,0,0), 1.).path_length_segs
+except AttributeError:
+    raise RuntimeError("Package 'dubins' does not support dubins.DubinsPath().path_length_segs.\n"
+                       "Run $ sudo pip install git+https://github.com/mlsteele/pydubins.git")
 
 
 # Notes: 
