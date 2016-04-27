@@ -549,7 +549,7 @@ class PathPlanner(HeuristicSearch):
     def is_admissible(self, state):
         return self.obstacles.is_admissible(state)
 
-    def heuristic(self, state, goal_state):
+    def heuristic_old(self, state, goal_state):
         # print
         # print((int(state.x), int(state.y), state.theta), (int(goal_state.x), int(goal_state.y), goal_state.theta))
         # print(np.cos(abs(goal_state.theta - state.theta)))
@@ -582,7 +582,7 @@ class PathPlanner(HeuristicSearch):
 
         return dubins.path_length(q0, q1, turning_radius) / param("dynamics.max_speed")
 
-    def heuristic2(self, state, goal_state):
+    def heuristic(self, state, goal_state):
         """Estimate the time it would take to get from state to goal_state.
         By taking a few dubins curves at different turning radii and returning the best time.
         """
