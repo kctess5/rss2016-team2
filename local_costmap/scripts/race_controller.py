@@ -235,14 +235,14 @@ class DynamicModel(object):
 
         return control_states
 
-    def max_speed_at_turning_radius(turning_radius):
+    def max_speed_at_turning_radius(self, turning_radius):
         """Return the maximum achievable speed at a given turning radius.
         Args:
             turning_radius: Turning radius to consider.
         Returns: Maximum speed in meters.
                  This will not exceed dynamics.max_speed.
         """
-        x = speed
+        x = turning_radius
         curve = -0.14*x*x + 1.38*x +1.151
         return min(param("dynamics.max_speed"), curve)
 
@@ -260,11 +260,10 @@ class DynamicModel(object):
         # All other types have a curve in the middle.
         MID_STRAIGHT_TYPES = [dubins.LSL, dubins.LSR, dubins.RSL]
 
-        # TODO baz
         max_straight_speed = param("dynamics.max_speed")
 
         for turning_radius in turning_radii:
-            max_curved_speed = min(max_straight_speed, baz.max_speed_at_curvature(turning_radius))
+            max_curved_speed = min(max_straight_speed, self.max_speed_at_turning_radius(turning_radius))
             path = dubins.DubinsPath(q0, q1, turning_radius)
 
             # Distances along the three sections of the dubins curve.
@@ -722,13 +721,26 @@ class AccelerationPlanner(HeuristicSearch):
         
         return True
 
-    def heuristic(self, accel_state, goal_state):
+    def heuristic_old(self, accel_state, goal_state):
         # return 0
         q0 = (accel_state.control_states[-1].x, accel_state.control_states[-1].y, accel_state.control_states[-1].theta)
         q1 = (goal_state.x, goal_state.y, goal_state.theta)
         turning_radius = param("dynamics.r_min")
 
         return param("planner.heuristic_bias")*dubins.path_length(q0, q1, turning_radius) / float(param("dynamics.max_speed"))
+
+    def heuristic(self, accel_state, goal_state):
+        """Estimate the time it would take to get from state to goal_state.
+        By taking a few dubins curves at different turning radii and returning the best time.
+        """
+        q0 = (accel_state.control_states[-1].x, accel_state.control_states[-1].y, accel_state.control_states[-1].theta)
+        q1 = (goal_state.x, goal_state.y, goal_state.theta)
+        # Take the min of several dubins curves.
+        # Turning radii to try.
+        # TODO parameterize this curvature range.
+        turning_radii = np.linspace(0.001, 2.0, num=5)
+        time = DYNAMICS.dubins_time(q0, q1, turning_radii)
+        return time
 
     def goal(self):
         # return the next goal state
