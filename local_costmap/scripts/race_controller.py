@@ -151,7 +151,6 @@ class DynamicModel(object):
         sign = 1 if state.steering_angle >= 0 else -1
 
         if (state.speed, state.steering_angle) in self.TABLE:
-            print("MEMOIZED")
             return sign*self.TABLE[(state.speed, abs(state.steering_angle))]
         else:
             # print("not")
@@ -369,7 +368,22 @@ class HeuristicSearch(object):
         parent_score, parent_state = heapq.heappop(self.frontier)
         parent_tree_node = parent_state.tree_node
 
+        # print()
+        # print()
+        # print("PARENT")
+        # # parent_state
+        # print("accel state:", parent_state.state.linear_accel, parent_state.state.steering_velocity)
+        # # print("candidate controls:", candidate_controls)
+        # print("first control_state", parent_state.state.control_states[0])
+        # print("lasat control_state", parent_state.state.control_states[-1])
+
         for neighbor_state in self.neighbors(parent_state.state):
+
+            # print("CHILD")
+            # print("accel state:", neighbor_state.linear_accel, neighbor_state.steering_velocity)
+            # print("first control_state", neighbor_state.control_states[0])
+            # print("lasat control_state", neighbor_state.control_states[-1])
+
             # print ("testing neighbor", neighbor_state)
             # prune any path segments that are bound to fail
             if self.is_admissible(neighbor_state):
@@ -569,7 +583,15 @@ class AccelerationPlanner(HeuristicSearch):
 
     def cost(self, accel_state):
         # time is our optimization target, so the cost of any given segment is constant
-        return param("planner.control_decisions_per_segment") / float(param("execution_freq"))
+        # steering_bias
+        # 
+        # xp = [0, 2, 1000]
+        # fp = [1.3, 1, 0]
+
+        # distance_bias = np.interp(self.obstacles.dist_at(accel_state.control_states[-1]), xp, fp)
+        # steering_bias = 1 + 0.2*abs(accel_state.control_states[-1].steering_angle) / param("dynamics.max_deflection")
+        # return steering_bias * distance_bias * param("planner.control_decisions_per_segment") / float(param("execution_freq")) 
+        return param("planner.control_decisions_per_segment") / float(param("execution_freq")) 
 
     # this big function is designed to check as few points as possible along the given path
     # it evaluates the distance function at the first point along the path, and then it steps
@@ -621,11 +643,12 @@ class AccelerationPlanner(HeuristicSearch):
         return True
 
     def heuristic(self, accel_state, goal_state):
+        # return 0
         q0 = (accel_state.control_states[-1].x, accel_state.control_states[-1].y, accel_state.control_states[-1].theta)
         q1 = (goal_state.x, goal_state.y, goal_state.theta)
-        turning_radius = 1.3
+        turning_radius = param("dynamics.r_min")
 
-        return dubins.path_length(q0, q1, turning_radius) / param("dynamics.max_speed")
+        return param("planner.heuristic_bias")*dubins.path_length(q0, q1, turning_radius) / float(param("dynamics.max_speed"))
 
     def goal(self):
         # return the next goal state
@@ -643,18 +666,18 @@ class AccelerationPlanner(HeuristicSearch):
         start_state = accel_state.control_states[-1]
         # TODO: precompute these options, and use a set of better spaced options
         # linear accel options: max accel, max decel, unity
-        if start_state.speed == 0:
+        if start_state.speed < param("epsilon"):
             # TODO: might want to consider a lower acceleration option for dealing with turning sharper while stuck
             linear_accel_options = [param("dynamics.max_linear_accel")] 
         else:
-            linear_accel_options = [param("dynamics.max_linear_decel"), 0.0, param("dynamics.max_linear_accel")] 
+            linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")] 
         # steering options: max steeing velocity in both directions,
         
         # NOTE: angular branch factor should be odd
         # only considers the admissible options
-        if start_state.steering_angle == -param("dynamics.max_deflection"):
+        if abs(start_state.steering_angle + param("dynamics.max_deflection")) < param("epsilon"):
             steering_velocity_options = np.linspace(0, param("dynamics.max_angular_velocity"), (param("planner.angular_branch_factor")+1)/2)
-        elif start_state.steering_angle == param("dynamics.max_deflection"):
+        elif abs(start_state.steering_angle - param("dynamics.max_deflection")) < param("epsilon"):
             steering_velocity_options = np.linspace(-param("dynamics.max_angular_velocity"), 0, (param("planner.angular_branch_factor")+1)/2)
         else:
             steering_velocity_options = np.linspace(-param("dynamics.max_angular_velocity"), param("dynamics.max_angular_velocity"), param("planner.angular_branch_factor"))
@@ -662,6 +685,12 @@ class AccelerationPlanner(HeuristicSearch):
         
         candidate_controls = list(itertools.product(linear_accel_options, steering_velocity_options))
 
+        # print()
+        # print("accel state:", accel_state.linear_accel, accel_state.steering_velocity)
+        # print("candidate controls:", candidate_controls)
+        # print("first control_state", accel_state.control_states[0])
+        # print("lasat control_state", accel_state.control_states[-1])
+        # print(accel_state.steering_velocity, accel_state.linear_accel, accel_state.control_states[0], accel_state.control_states[-1])
         # print("    - candidate controls:", candidate_controls)
         # print("    - control states:", self.control_states(start_state, candidate_controls[0][0], candidate_controls[0][1]))
 
@@ -765,7 +794,7 @@ class ChallengeController(ControlModule):
         start_accel_state = AccelerationState(control_states=[start_state], linear_accel=0, steering_velocity=0)
 
         self.path_planner.reset(start_state=start_accel_state)
-        self.path_planner.search(time_limit=0.9/float(param("planning_freq")))
+        self.path_planner.search(time_limit=0.8/float(param("planning_freq")))
 
         best_path = self.path_planner.best()
 
@@ -827,7 +856,7 @@ class ChallengeController(ControlModule):
 
         # apply the given path to the car, continue it until told otherwise
         self.state_history.append(state)
-        print(state.speed)
+        # print(state.speed)
 
         # send the message to the car
         # TODO: maybe an asynchronous state commit system will be more flexible

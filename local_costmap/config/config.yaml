@@ -8,6 +8,8 @@
   #   3 - debug viz, may significantly slow down runtime
 # ---------------- #
 
+epsilon: 0.1
+
 viz:
   topics:
     goals:
@@ -36,17 +38,17 @@ viz:
     path_search:
       best_path:
         level: 1
-        rate_limit: 5
+        rate_limit: 2
         type: "path"
         color: [0,0,0,1]
       viable_paths:
         level: 2
-        rate_limit: 5
+        rate_limit: 2
         type: "path"
         color: [0,0,0,1]
       complete_paths:
         level: 2
-        rate_limit: 5
+        rate_limit: 2
         type: "path"
         color: [0,0,0,1]
       speed:
@@ -60,7 +62,7 @@ viz:
 
 # wheel_base: 0.27
 planning_freq: 5
-execution_freq: 12
+execution_freq: 15
 
 runtime_specific:
   racecar:
@@ -127,10 +129,10 @@ planner:
   # number because it will consider both min/max speed settings
   # this number should be odd
   # the higher it is, the better the found path will be, but the longer it will take
-  angular_branch_factor: 3
+  angular_branch_factor: 5
 
   # if the path is within this distance, the goal is considered met (meters)
-  goal_distance_threshold: 0.5
+  goal_distance_threshold: 0.25
 
   # if there is now path, and the car is stopped, it will
   # start to back up in a straight line at this speed
@@ -141,6 +143,12 @@ planner:
 
   # max planning distance. paths are terminated when they are above this (meters)
   max_planning_dist: 5
+
+  # heuristic bias
+  # heuristic is biased (multiplied) by this value once computed
+  # setting this high makes the search more like dfs, low is
+  # more like bfs. 1 is theortically optimal?
+  heuristic_bias: 1.1
 
 # ------------------ #
 # Emergency Parameters
