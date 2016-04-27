@@ -38,17 +38,17 @@ viz:
     path_search:
       best_path:
         level: 1
-        rate_limit: 2
+        rate_limit: 6
         type: "path"
         color: [0,0,0,1]
       viable_paths:
         level: 2
-        rate_limit: 2
+        rate_limit: 6
         type: "path"
         color: [0,0,0,1]
       complete_paths:
         level: 2
-        rate_limit: 2
+        rate_limit: 6
         type: "path"
         color: [0,0,0,1]
       speed:
@@ -61,8 +61,8 @@ viz:
         type: "float"
 
 # wheel_base: 0.27
-planning_freq: 5
-execution_freq: 15
+planning_freq: 6
+execution_freq: 12
 
 runtime_specific:
   racecar:
@@ -139,7 +139,7 @@ planner:
   backup_speed: -1.0
 
   # number of control states per branch
-  control_decisions_per_segment: 5
+  control_decisions_per_segment: 4
 
   # max planning distance. paths are terminated when they are above this (meters)
   max_planning_dist: 5

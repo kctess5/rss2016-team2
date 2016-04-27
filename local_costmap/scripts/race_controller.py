@@ -207,6 +207,10 @@ class DynamicModel(object):
             # bound the angle to [-max_deflection, max_deflection]
             next_steering = ls.steering_angle + steering_velocity / self.execution_freq
             next_steering = max(min(param("dynamics.max_deflection"), next_steering), -param("dynamics.max_deflection"))
+            
+            # fix small accumulated error
+            if abs(next_steering) < param("epsilon"):
+                next_steering = 0.0
 
             # add the new control and old position to new state
             ns = State(x=ls.x, y=ls.y, theta=ls.theta, speed=next_speed, steering_angle=next_steering)
@@ -661,6 +665,15 @@ class AccelerationPlanner(HeuristicSearch):
     def should_bail(self, state, goal_state):
         return euclidean_distance(state.control_states[-1], Point(x=0, y=0)) > euclidean_distance(goal_state, Point(x=0, y=0))
 
+    def max_speed_given_dist(self, dist):
+        # want to stay below a certain speed depending on the distance from the walls
+        # based on stopping time given distances
+        
+        xp = [param("obstacle_map.min_distance"), 0.9, 1000]
+        fp = [1.5, param("dynamics.max_speed"), param("dynamics.max_speed")]
+        return np.interp(dist, xp, fp)
+
+
     def neighbors(self, accel_state):
         # print("neighbors called on:", accel_state)
         start_state = accel_state.control_states[-1]
@@ -670,7 +683,29 @@ class AccelerationPlanner(HeuristicSearch):
             # TODO: might want to consider a lower acceleration option for dealing with turning sharper while stuck
             linear_accel_options = [param("dynamics.max_linear_accel")] 
         else:
-            linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")] 
+            # limit the max speed at any given point in space to avoid going too fast near obstacles
+            max_target_speed = self.max_speed_given_dist(self.obstacles.dist_at(accel_state.control_states[-1]))
+            current_speed = accel_state.control_states[-1].speed
+
+            # this is positive if the car is over speed
+            diff = current_speed - max_target_speed
+            accel_target = param("execution_freq")*(max_target_speed - current_speed)/param("planner.control_decisions_per_segment")
+
+            if accel_target < param("dynamics.max_linear_decel"):
+                linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")] 
+            elif accel_target > param("dynamics.max_linear_accel"):
+                linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")]
+            else:
+                linear_accel_options = [param("dynamics.max_linear_decel"), accel_target]
+
+
+            # print(accel_target, param("dynamics.max_linear_accel"), current_speed)
+            # max_accel = 
+            # param("planner.control_decisions_per_segment") 
+            # param("execution_freq") 
+            
+            # param("dynamics.max_linear_accel") 
+            # param("dynamics.max_linear_decel")
         # steering options: max steeing velocity in both directions,
         
         # NOTE: angular branch factor should be odd
@@ -709,10 +744,7 @@ class AccelerationPlanner(HeuristicSearch):
 class ChallengeController(ControlModule):
     """ Top level car control for the 6.141 Challenge"""
     def __init__(self):
-        # print("test")
         super(ChallengeController, self).__init__("challenge_controller")
-
-        # print("test")
 
         # initialize the control state management
         self.state_history = [State(x=0, y=0, theta=0, steering_angle=0, speed=0)]
@@ -798,6 +830,8 @@ class ChallengeController(ControlModule):
 
         best_path = self.path_planner.best()
 
+        
+
         # if best_path and type(best_path.states[0]) == AccelerationState:
         #     control_states = reduce(lambda x,y: x+y, map(lambda x: x.control_states, best_path.states))
         #     best_path = Path(states=control_states)
@@ -825,6 +859,7 @@ class ChallengeController(ControlModule):
             # perform default stuck control
             self.stuck_control()
         else:
+            # print(max(map(lambda x: x.speed, best_path.states)))
             self.commit_path(best_path) # begin executing the new path
             # TODO: decouple path execution from path planning so they can run at different hz
             # self.continue_path()

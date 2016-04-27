@@ -29,7 +29,7 @@ steering_prediction:
 
 # these are bad guesses, waiting optimization
 max_linear_accel: 4
-max_linear_decel: -6
+max_linear_decel: -4
 max_angular_accel: 1.5
 # max_angular_velocity: 1.5
 max_angular_velocity: 1.5
