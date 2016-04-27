@@ -20,6 +20,12 @@ import dubins
 from profilehooks import profile, timecall
 # from dynamical import DynamicModel
 
+# Check that the dubins library supports path_length_segs.
+if not hasattr(dubins.DubinsPath((0,0,0), (0,0,0), 1.), "path_length_segs"):
+    raise RuntimeError("Package 'dubins' does not support dubins.DubinsPath().path_length_segs. "
+                       "Run `sudo python setup.py install` in the patched pydubins directory to fix this.")
+
+
 # Notes: 
 #   - Relies on the following external files:
 #       - navigator.py
@@ -127,6 +133,7 @@ class DynamicModel(object):
         elif self.max_dynamic_angle == a:
             return [(1, len(self.raw_data)-1)]
         else:
+
             for i in xrange(len(self.sorted_angles)-1):
                 if self.sorted_angles[i] == a:
                     return [(1,i)]
@@ -217,6 +224,56 @@ class DynamicModel(object):
             ls = propagated
 
         return control_states
+
+    def max_speed_at_turning_radius(turning_radius):
+        """Return the maximum achievable speed at a given turning radius.
+        Args:
+            turning_radius: Turning radius to consider.
+        Returns: Maximum speed in meters.
+                 This will not exceed dynamics.max_speed.
+        """
+        x = speed
+        curve = -0.14*x*x + 1.38*x +1.151
+        return min(param("dynamics.max_speed"), curve)
+
+    def dubins_time(self, q0, q1, turning_radii):
+        """Shortest time to traverse from q0 to q1 along one of the dubins curves.
+        Args:
+            q0, q1: Pose tuples (x, y, heading) of start and end.
+            turning_radii: Turning radii to consider.
+                           A dubins curve is considered for each radius and the minimum time is returned.
+        """
+        assert(len(turning_radii) > 0)
+        min_time = float("inf")
+
+        # These are dubins curve types which have a straight middle section.
+        # All other types have a curve in the middle.
+        MID_STRAIGHT_TYPES = [dubins.LSL, dubins.LSR, dubins.RSL]
+
+        # TODO baz
+        max_straight_speed = param("dynamics.max_speed")
+
+        for turning_radius in turning_radii:
+            max_curved_speed = min(max_straight_speed, baz.max_speed_at_curvature(turning_radius))
+            path = dubins.DubinsPath(q0, q1, turning_radius)
+
+            # Distances along the three sections of the dubins curve.
+            # Tuple of 3 distances.
+            distances = path.path_length_segs()
+
+            # Time to traverse is the sum of the times to traverse each section.
+            if path.path_type() in MID_STRAIGHT_TYPES:
+                # Case where the middle section is straight.
+                path_time = ((distances[0] + distances[2]) / max_curved_speed
+                        + distances[1] / max_straight_speed)
+            else:
+                # Case where all 3 sections are curved.
+                path_time = sum(distances) / max_curved_speed
+
+            min_time = min(min_time, path_time)
+
+        return min_time
+
 
 DYNAMICS = DynamicModel()
 
@@ -524,6 +581,19 @@ class PathPlanner(HeuristicSearch):
         turning_radius = 1.3
 
         return dubins.path_length(q0, q1, turning_radius) / param("dynamics.max_speed")
+
+    def heuristic2(self, state, goal_state):
+        """Estimate the time it would take to get from state to goal_state.
+        By taking a few dubins curves at different turning radii and returning the best time.
+        """
+        # Take the min of several dubins curves.
+        q0 = (state.x, state.y, state.theta)
+        q1 = (goal_state.x, goal_state.y, goal_state.theta)
+        # Turning radii to try.
+        # TODO parameterize this curvature range.
+        turning_radii = np.linspace(0.001, 2.0, num=5)
+        time = self.dubins_time(q0, q1, turning_radii)
+        return time
 
     def goal(self):
         # return the next goal state
