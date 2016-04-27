@@ -733,14 +733,15 @@ class AccelerationPlanner(HeuristicSearch):
         """Estimate the time it would take to get from state to goal_state.
         By taking a few dubins curves at different turning radii and returning the best time.
         """
+        # return self.heuristic_old(accel_state, goal_state)
         q0 = (accel_state.control_states[-1].x, accel_state.control_states[-1].y, accel_state.control_states[-1].theta)
         q1 = (goal_state.x, goal_state.y, goal_state.theta)
         # Take the min of several dubins curves.
         # Turning radii to try.
         # TODO parameterize this curvature range.
-        turning_radii = np.linspace(0.001, 2.0, num=5)
-        time = DYNAMICS.dubins_time(q0, q1, turning_radii)
-        return time
+        # turning_radii = np.linspace(1.3,4.5, num=3)
+        time = DYNAMICS.dubins_time(q0, q1, [1.3])
+        return time*param("planner.heuristic_bias")
 
     def goal(self):
         # return the next goal state

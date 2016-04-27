@@ -61,7 +61,7 @@ viz:
         type: "float"
 
 # wheel_base: 0.27
-planning_freq: 6
+planning_freq: 5
 execution_freq: 12
 
 runtime_specific:
