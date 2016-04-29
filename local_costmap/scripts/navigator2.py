@@ -37,97 +37,111 @@ class Navigator(object):
                 (angles > -math.pi/2.) & (angles < math.pi/2.))
         ranges = ranges[include_indices]
         angles = angles[include_indices]
-        self.find_walls(ranges, angles)
-        self.find_good_corridors()
-        #self.find_right_corridor()
 
-        if len(self.corridors) > 0:
+        walls = self.find_walls(ranges, angles)
+        corridors = self.find_good_corridors(walls)
+        goal = self.find_best_goal(corridors)
+
+        self.walls = walls
+        self.corridors = corridors
+        self.goal = goal
+
+    def find_best_goal(self, corridors):
+        for corridor in corridors:
             # Set goal to the rightmost corridor
-            [[x0, y0], [x1, y1]] = self.corridors[0] # [[x0, y0], [x1, y1]]
+            ((x0, y0), (x1, y1)) = corridor # [[x0, y0], [x1, y1]]
             centerpoint_x = (x0 + x1)/2.
             centerpoint_y = (y0 + y1)/2.
-            centerpoint_heading = math.atan2(y1 - y0, x1 - x0) - math.pi/2.
-            self.goal = (Point2D(centerpoint_x, centerpoint_y), centerpoint_heading)
-            if distance2(self.goal[0], Point2D(0,0)) < 8:
-                # Move the goal point farr away
-                x = self.goal[0].x + math.cos(self.goal[1])*5
-                y = self.goal[0].y + math.sin(self.goal[1])*5
-                self.goal = (Point2D(x,y), self.goal[1])
-        else:
-            self.goal = self.STRAIGHT_AHEAD
+            heading = math.atan2(y1 - y0, x1 - x0) - math.pi/2.
+            if abs(heading) > 5.*math.pi/8.:
+                # Angle is too steep to be a legit goal point. Try next corridor.
+                print "skipping heading", heading
+                continue
+            print "good heading", heading
+            goalpoint = Point2D(centerpoint_x, centerpoint_y)
+            if distance2(goalpoint, Point2D(0,0)) < 8:
+                # Goal point is too close to the car
+                # Move the goal point far away in the direction of its heading
+                x = goalpoint.x + math.cos(heading)*5
+                y = goalpoint.y + math.sin(heading)*5
+                return (Point2D(x,y), heading)
+            return (goalpoint, heading)
+        # No (suitable) corridors
+        return self.STRAIGHT_AHEAD
 
     def find_walls(self, ranges, angles):
         """ sets self.walls. """
         #print "started Split-Merge"
         points = [polar_to_point(r,a) for r,a in zip(ranges, angles)]
         walls = self.sm.run(points)
-        self.walls = filter(lambda wall: length(wall) > self.MIN_WALL_LENGTH, walls)
+        walls = filter(lambda wall: length(wall) > self.MIN_WALL_LENGTH, walls)
+        return walls
         #print "finished Split-Merge", len(walls)
 
-    def find_good_corridors(self):
+    def find_good_corridors(self, walls):
         """ Find corridors """
         corridors = []
-        for w2, w1 in zip(self.walls, self.walls[1:]):
+        for w2, w1 in zip(walls, walls[1:]):
             p1 = w1.p2
             p2 = w2.p1
             improved_p1 = closest_point_segment(w2, p1)
             improved_p2 = closest_point_segment(w1, p2)
             if distance2(improved_p1, improved_p2) > self.MIN_CORRIDOR_WIDTH_2:
                 corridors.append(Segment(improved_p1, improved_p2))
-        self.corridors = corridors
+        #self.corridors = corridors
+        return corridors
 
-
-    def find_right_corridor(self):
-        """ Sets self.corridors (to contain only 1 corridor) based on self.walls. 
-        Algorithm:
-        * Rightmost wall = w1
-        * Endpoint of w1 = p1
-        * Next wall = w2
-        * Point on w2 closest to p1 = p2
-        * if distance(p1, p2) < min start over with w2 as w1
-          ( That excludes cases where this is not a discontinuity )
-        * If discontinuity is right of center or over center:
-          * w3 = line through p1 parallel to w2
-          * p3 = point on w3 closest to p2
-        * If discontinuity is left of center:
-          * w3 = line through p2 parallel to w1
-          * p3 = point on w3 closest to p1
-        * Corridor = p2--p3
-        """
-        walls = self.walls
-        while len(walls) > 2: # Can try to place a corridor
-            w1 = walls[0]
-            p1 = w1.p1
-            w2 = walls[1]
-            if point_in_segment(w2, p1):
-                p2 = closest_point(segment_to_line(w2), p1)
-            else:
-                p2 = min((w2.p1, w2.p2), key=lambda point: distance2(point, p1))
-            if distance2(p1, p2)< self.MIN_CORRIDOR_WIDTH_2:
-                walls = walls[1:]
-                continue
-            if p1.x < 0: # This is a corridor on the right (or center)
-                delta = Point2D(p1.x - p2.x, p1.y - p2.y)
-                w3_p1 = Point2D(w2.p1.x + delta.x, w2.p1.y + delta.y)
-                w3_p2 = Point2D(w2.p2.x + delta.x, w2.p2.y + delta.y)
-                w3_seg = Segment(w3_p1, w3_p2)
-                w3_line = segment_to_line(w3_seg)
-                p3 = closest_point(w3_line, p2)
-                self.corridors = [Segment(p3, p2)]
-                self.imagined_wall = w3_seg
-                return
-            else:
-                delta = Point2D(p2.x - p1.x, p2.y - p1.y)
-                w3_p1 = Point2D(w1.p1.x + delta.x, w1.p1.y + delta.y)
-                w3_p2 = Point2D(w1.p2.x + delta.x, w1.p2.y + delta.y)
-                w3_seg = Segment(w3_p1, w3_p2)
-                w3_line = segment_to_line(w3_seg)
-                p3 = closest_point(w3_line, p1)
-                self.corridors = [Segment(p1, p3)]
-                self.imagined_wall = w3_seg
-                return
-        self.corridors = []
-        self.imagined_wall = None
+    #def find_right_corridor(self):
+    #    """ Sets self.corridors (to contain only 1 corridor) based on self.walls. 
+    #    Algorithm:
+    #    * Rightmost wall = w1
+    #    * Endpoint of w1 = p1
+    #    * Next wall = w2
+    #    * Point on w2 closest to p1 = p2
+    #    * if distance(p1, p2) < min start over with w2 as w1
+    #      ( That excludes cases where this is not a discontinuity )
+    #    * If discontinuity is right of center or over center:
+    #      * w3 = line through p1 parallel to w2
+    #      * p3 = point on w3 closest to p2
+    #    * If discontinuity is left of center:
+    #      * w3 = line through p2 parallel to w1
+    #      * p3 = point on w3 closest to p1
+    #    * Corridor = p2--p3
+    #    """
+    #    walls = self.walls
+    #    while len(walls) > 2: # Can try to place a corridor
+    #        w1 = walls[0]
+    #        p1 = w1.p1
+    #        w2 = walls[1]
+    #        if point_in_segment(w2, p1):
+    #            p2 = closest_point(segment_to_line(w2), p1)
+    #        else:
+    #            p2 = min((w2.p1, w2.p2), key=lambda point: distance2(point, p1))
+    #        if distance2(p1, p2)< self.MIN_CORRIDOR_WIDTH_2:
+    #            walls = walls[1:]
+    #            continue
+    #        if p1.x < 0: # This is a corridor on the right (or center)
+    #            delta = Point2D(p1.x - p2.x, p1.y - p2.y)
+    #            w3_p1 = Point2D(w2.p1.x + delta.x, w2.p1.y + delta.y)
+    #            w3_p2 = Point2D(w2.p2.x + delta.x, w2.p2.y + delta.y)
+    #            w3_seg = Segment(w3_p1, w3_p2)
+    #            w3_line = segment_to_line(w3_seg)
+    #            p3 = closest_point(w3_line, p2)
+    #            self.corridors = [Segment(p3, p2)]
+    #            self.imagined_wall = w3_seg
+    #            return
+    #        else:
+    #            delta = Point2D(p2.x - p1.x, p2.y - p1.y)
+    #            w3_p1 = Point2D(w1.p1.x + delta.x, w1.p1.y + delta.y)
+    #            w3_p2 = Point2D(w1.p2.x + delta.x, w1.p2.y + delta.y)
+    #            w3_seg = Segment(w3_p1, w3_p2)
+    #            w3_line = segment_to_line(w3_seg)
+    #            p3 = closest_point(w3_line, p1)
+    #            self.corridors = [Segment(p1, p3)]
+    #            self.imagined_wall = w3_seg
+    #            return
+    #    self.corridors = []
+    #    self.imagined_wall = None
 
 
     def camera_update(self, camera_data):
