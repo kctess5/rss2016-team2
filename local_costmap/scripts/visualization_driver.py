@@ -113,7 +113,7 @@ class VisualizationDriver(object):
                     map(lambda segment: segment.control_states, path)), 
                         candidate_paths)
 
-        markers += [self.marker_from_path(path, index=i, linewidth=0.03, color=ColorRGBA(0, 1, 0, 1), \
+        markers += [self.marker_from_path(path, index=i, linewidth=0.01, color=ColorRGBA(0, 1, 0, 1), \
                     lifetime=1.0/float(self.get_info("path_search.best_path")["rate_limit"]))
                     for i, path in enumerate(candidate_paths)]
         marker_array = MarkerArray(markers=markers)

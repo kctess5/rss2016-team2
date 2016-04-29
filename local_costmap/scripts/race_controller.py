@@ -397,11 +397,19 @@ class GoalManager(object):
         self.navigator.laser_update(data)
         self.navigator.visualize()
 
+
 class HeuristicSearch(object):
     """ Perform heuristic search on the provided set of cost/admissibility/heuristic/neighbor functions """
     def __init__(self):
         pass
         # self.reset()
+
+    def bfs_tree(self, levels, start_state):
+        if levels == 0:
+            return TreeNode(state=start_state, children=[])
+        else:
+            children = self.neighbors(start_state)
+            return TreeNode(state=start_state, children=map(lambda x: self.bfs_tree(levels-1, x), children))
 
     def reset(self, start_state):
         # Frontier is a priority queue.
@@ -651,6 +659,11 @@ class AccelerationPlanner(HeuristicSearch):
     """ Implements path planning by considering constant acceleration path segments
     """
     def __init__(self, obstacles, goals):
+        # self.steering_options = [[-1.0,0.0,1.0], [-1.0, -0.5, -.15, -0.05, 0.0, 0.05, 0.15, 0.5, 1.0]]
+        self.steering_options = [[-1.0,0.0, 1.0], [-0.4, -.2, -0.08, -0.03, 0.0, 0.03, 0.08, 0.2, 0.4]]
+        # self.steering_options = [[], [-0.1, 0.0, 0.4]]
+        self.steering_options = map(lambda l: map(lambda x: float(param("dynamics.max_angular_velocity"))*x, l), self.steering_options)
+
         self.obstacles = obstacles
         self.goals = goals
 
@@ -739,8 +752,9 @@ class AccelerationPlanner(HeuristicSearch):
         # Take the min of several dubins curves.
         # Turning radii to try.
         # TODO parameterize this curvature range.
-        # turning_radii = np.linspace(1.3,4.5, num=3)
-        time = DYNAMICS.dubins_time(q0, q1, [1.3])
+        turning_radii = np.linspace(1.3,4.5, num=3)
+        # time = DYNAMICS.dubins_time(q0, q1, [1.3])
+        time = DYNAMICS.dubins_time(q0, q1, turning_radii)
         return time*param("planner.heuristic_bias")
 
     def goal(self):
@@ -757,78 +771,147 @@ class AccelerationPlanner(HeuristicSearch):
     def max_speed_given_dist(self, dist):
         # want to stay below a certain speed depending on the distance from the walls
         # based on stopping time given distances
-        
-        xp = [param("obstacle_map.min_distance"), 0.9, 1000]
-        fp = [1.5, param("dynamics.max_speed"), param("dynamics.max_speed")]
-        return np.interp(dist, xp, fp)
-
+        return param("dynamics.max_speed")
+        # xp = [param("obstacle_map.min_distance"), 1.0, 1000]
+        # fp = [0.8, param("dynamics.max_speed"), param("dynamics.max_speed")]
+        # return np.interp(dist, xp, fp)
 
     def neighbors(self, accel_state):
         # print("neighbors called on:", accel_state)
         start_state = accel_state.control_states[-1]
         # TODO: precompute these options, and use a set of better spaced options
         # linear accel options: max accel, max decel, unity
-        if start_state.speed < param("epsilon"):
-            # TODO: might want to consider a lower acceleration option for dealing with turning sharper while stuck
-            linear_accel_options = [param("dynamics.max_linear_accel")] 
+        accel_options = []
+        decel_options = []
+
+        # if start_state.speed < param("epsilon"):
+        #     can_decel = False
+        #     # TODO: might want to consider a lower acceleration option for dealing with turning sharper while stuck
+        #     accel_options = [param("dynamics.max_linear_accel")] 
+        # else:
+        # limit the max speed at any given point in space to avoid going too fast near obstacles
+        max_target_speed = self.max_speed_given_dist(self.obstacles.dist_at(accel_state.control_states[-1]))
+        current_speed = accel_state.control_states[-1].speed
+
+        # this is positive if the car is over speed
+        diff = current_speed - max_target_speed
+        accel_target = param("execution_freq")*(max_target_speed - current_speed)/param("planner.control_decisions_per_segment")
+
+        if accel_target < param("dynamics.max_linear_decel"):
+            # linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")] 
+            decel_options = [param("dynamics.max_linear_decel")] 
+        elif accel_target > param("dynamics.max_linear_accel"):
+            accel_options = [param("dynamics.max_linear_accel")]
+            decel_options = [param("dynamics.max_linear_decel")]
         else:
-            # limit the max speed at any given point in space to avoid going too fast near obstacles
-            max_target_speed = self.max_speed_given_dist(self.obstacles.dist_at(accel_state.control_states[-1]))
-            current_speed = accel_state.control_states[-1].speed
+            accel_options = [accel_target]
+            decel_options = [param("dynamics.max_linear_decel")]
+            # linear_accel_options = [param("dynamics.max_linear_decel"), accel_target]
 
-            # this is positive if the car is over speed
-            diff = current_speed - max_target_speed
-            accel_target = param("execution_freq")*(max_target_speed - current_speed)/param("planner.control_decisions_per_segment")
+        if start_state.speed < param("epsilon"):
+            decel_options = []
 
-            if accel_target < param("dynamics.max_linear_decel"):
-                linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")] 
-            elif accel_target > param("dynamics.max_linear_accel"):
-                linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")]
-            else:
-                linear_accel_options = [param("dynamics.max_linear_decel"), accel_target]
-
-
-            # print(accel_target, param("dynamics.max_linear_accel"), current_speed)
-            # max_accel = 
-            # param("planner.control_decisions_per_segment") 
-            # param("execution_freq") 
-            
-            # param("dynamics.max_linear_accel") 
-            # param("dynamics.max_linear_decel")
-        # steering options: max steeing velocity in both directions,
-        
         # NOTE: angular branch factor should be odd
         # only considers the admissible options
+        steering_options = self.steering_options
         if abs(start_state.steering_angle + param("dynamics.max_deflection")) < param("epsilon"):
-            steering_velocity_options = np.linspace(0, param("dynamics.max_angular_velocity"), (param("planner.angular_branch_factor")+1)/2)
+            steering_options = map(lambda x: filter(lambda opt: opt >= 0, x), steering_options)
         elif abs(start_state.steering_angle - param("dynamics.max_deflection")) < param("epsilon"):
-            steering_velocity_options = np.linspace(-param("dynamics.max_angular_velocity"), 0, (param("planner.angular_branch_factor")+1)/2)
-        else:
-            steering_velocity_options = np.linspace(-param("dynamics.max_angular_velocity"), param("dynamics.max_angular_velocity"), param("planner.angular_branch_factor"))
-        # remove any options that will have negative or zero speeds
+            steering_options = map(lambda x: filter(lambda opt: opt <= 0, x), steering_options)
         
-        candidate_controls = list(itertools.product(linear_accel_options, steering_velocity_options))
 
-        # print()
-        # print("accel state:", accel_state.linear_accel, accel_state.steering_velocity)
-        # print("candidate controls:", candidate_controls)
-        # print("first control_state", accel_state.control_states[0])
-        # print("lasat control_state", accel_state.control_states[-1])
-        # print(accel_state.steering_velocity, accel_state.linear_accel, accel_state.control_states[0], accel_state.control_states[-1])
-        # print("    - candidate controls:", candidate_controls)
-        # print("    - control states:", self.control_states(start_state, candidate_controls[0][0], candidate_controls[0][1]))
+        candidate_controls = []
+        if accel_options:
+            candidate_controls += list(itertools.product(accel_options, steering_options[1]))
+        if decel_options:
+            candidate_controls += list(itertools.product(decel_options, steering_options[0]))
 
         # map each control choice to an actual search state, complete with intermediate control states
         return map( lambda cc: \
             AccelerationState(control_states=DYNAMICS.propagate_accel(start_state, cc[0], cc[1]), steering_velocity=cc[1], linear_accel=cc[0]), \
                 candidate_controls)
 
-        # neighbors = []
+    # def neighbors(self, accel_state):
+    #     # print("neighbors called on:", accel_state)
+    #     start_state = accel_state.control_states[-1]
+    #     # TODO: precompute these options, and use a set of better spaced options
+    #     # linear accel options: max accel, max decel, unity
+        
+    #     if start_state.speed < param("epsilon"):
+    #         # TODO: might want to consider a lower acceleration option for dealing with turning sharper while stuck
+    #         linear_accel_options = [param("dynamics.max_linear_accel")] 
+    #     else:
+    #         # limit the max speed at any given point in space to avoid going too fast near obstacles
+    #         max_target_speed = self.max_speed_given_dist(self.obstacles.dist_at(accel_state.control_states[-1]))
+    #         current_speed = accel_state.control_states[-1].speed
 
-        # for i in candidate_controls:
-        #     cs = self.control_states(start_state, i[0], i[1])
-        #     AccelerationState(states=cs, steering_velocity=i[1], linear_accel=i[0])
-        #     neighbors.push(cs)
+    #         # this is positive if the car is over speed
+    #         diff = current_speed - max_target_speed
+    #         accel_target = param("execution_freq")*(max_target_speed - current_speed)/param("planner.control_decisions_per_segment")
+
+            
+
+    #         if accel_target < param("dynamics.max_linear_decel"):
+    #             # linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")] 
+    #             linear_accel_options = [param("dynamics.max_linear_decel")] 
+    #         elif accel_target > param("dynamics.max_linear_accel"):
+    #             linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")]
+    #         else:
+    #             linear_accel_options = [param("dynamics.max_linear_decel"), accel_target]
+
+
+    #         # print(accel_target, param("dynamics.max_linear_accel"), current_speed)
+    #         # max_accel = 
+    #         # param("planner.control_decisions_per_segment") 
+    #         # param("execution_freq") 
+            
+    #         # param("dynamics.max_linear_accel") 
+    #         # param("dynamics.max_linear_decel")
+    #     # steering options: max steeing velocity in both directions,
+        
+    #     # NOTE: angular branch factor should be odd
+    #     # only considers the admissible options
+    #     steering_options = self.steering_options
+    #     if abs(start_state.steering_angle + param("dynamics.max_deflection")) < param("epsilon"):
+    #         steering_options = map(lambda x: filter(lambda opt: opt >= 0, x), steering_options)
+    #         # steering_velocity_options = np.linspace(0, param("dynamics.max_angular_velocity"), (param("planner.angular_branch_factor")+1)/2)
+    #     elif abs(start_state.steering_angle - param("dynamics.max_deflection")) < param("epsilon"):
+    #         steering_options = map(lambda x: filter(lambda opt: opt <= 0, x), steering_options)
+    #         # steering_velocity_options = np.linspace(-param("dynamics.max_angular_velocity"), 0, (param("planner.angular_branch_factor")+1)/2)
+        
+
+    #     candidate_controls = []
+    #     for i in xrange(len(linear_accel_options)):
+    #         candidate_controls += list(itertools.product([linear_accel_options[i]], steering_options[i]))
+
+    #     print(candidate_controls)
+
+    #     # else:
+    #     #     steering_velocity_options = np.linspace(-param("dynamics.max_angular_velocity"), param("dynamics.max_angular_velocity"), param("planner.angular_branch_factor"))
+    #     # remove any options that will have negative or zero speeds
+        
+    #     # candidate_controls = list(itertools.product(linear_accel_options, steering_velocity_options))
+
+    #     # print()
+    #     # print("accel state:", accel_state.linear_accel, accel_state.steering_velocity)
+    #     # print("candidate controls:", candidate_controls)
+    #     # print("first control_state", accel_state.control_states[0])
+    #     # print("lasat control_state", accel_state.control_states[-1])
+    #     # print(accel_state.steering_velocity, accel_state.linear_accel, accel_state.control_states[0], accel_state.control_states[-1])
+    #     # print("    - candidate controls:", candidate_controls)
+    #     # print("    - control states:", self.control_states(start_state, candidate_controls[0][0], candidate_controls[0][1]))
+
+    #     # map each control choice to an actual search state, complete with intermediate control states
+    #     return map( lambda cc: \
+    #         AccelerationState(control_states=DYNAMICS.propagate_accel(start_state, cc[0], cc[1]), steering_velocity=cc[1], linear_accel=cc[0]), \
+    #             candidate_controls)
+
+    #     # neighbors = []
+
+    #     # for i in candidate_controls:
+    #     #     cs = self.control_states(start_state, i[0], i[1])
+    #     #     AccelerationState(states=cs, steering_velocity=i[1], linear_accel=i[0])
+    #     #     neighbors.push(cs)
 
 class ChallengeController(ControlModule):
     """ Top level car control for the 6.141 Challenge"""
@@ -846,7 +929,6 @@ class ChallengeController(ControlModule):
 
         self.goals = GoalManager(self.viz)
         self.obstacles = ObstacleMap()
-        # self.path_planner = PathPlanner(self.obstacles, self.goals)
         self.path_planner = AccelerationPlanner(self.obstacles, self.goals)
 
         # hook up necessary data flow
@@ -906,6 +988,21 @@ class ChallengeController(ControlModule):
 
     @profile(sort='tottime')
     def compute_control(self, event=None):
+         # print("VIZ")
+        # print()
+        # if self.viz.should_visualize("path_search.viable_paths"):
+        #     print("VIZ")
+        #     ss = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
+        #     ass = AccelerationState(control_states=[ss], linear_accel=0, steering_velocity=1.5)
+        #     t = self.path_planner.bfs_tree(3, ass)
+
+        #     # for i in t.children:
+        #     #     print (i)
+
+        #     self.viz.publish_viable_paths(t)
+
+        # return
+
         if not self.obstacles.first_laser_recieved:
             print("Waiting for laser data...")
             return False

@@ -8,7 +8,7 @@
   #   3 - debug viz, may significantly slow down runtime
 # ---------------- #
 
-epsilon: 0.1
+epsilon: 0.001
 
 viz:
   topics:
@@ -38,17 +38,17 @@ viz:
     path_search:
       best_path:
         level: 1
-        rate_limit: 6
+        rate_limit: 5
         type: "path"
         color: [0,0,0,1]
       viable_paths:
         level: 2
-        rate_limit: 6
+        rate_limit: 5
         type: "path"
         color: [0,0,0,1]
       complete_paths:
         level: 2
-        rate_limit: 6
+        rate_limit: 5
         type: "path"
         color: [0,0,0,1]
       speed:
@@ -61,8 +61,8 @@ viz:
         type: "float"
 
 # wheel_base: 0.27
-planning_freq: 5
-execution_freq: 12
+planning_freq: 4
+execution_freq: 15
 
 runtime_specific:
   racecar:
@@ -143,7 +143,7 @@ planner:
   backup_speed: -1.0
 
   # number of control states per branch
-  control_decisions_per_segment: 4
+  control_decisions_per_segment: 6
 
   # max planning distance. paths are terminated when they are above this (meters)
   max_planning_dist: 5
@@ -152,7 +152,7 @@ planner:
   # heuristic is biased (multiplied) by this value once computed
   # setting this high makes the search more like dfs, low is
   # more like bfs. 1 is theortically optimal?
-  heuristic_bias: 1.1
+  heuristic_bias: 1.07
 
 # ------------------ #
 # Emergency Parameters
