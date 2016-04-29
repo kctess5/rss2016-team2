@@ -12,13 +12,14 @@ from rospy.numpy_msg import numpy_msg
 import navigator2 as navigator
 from visualization_driver import VisualizationDriver
 from helpers import param, euclidean_distance, FrameBuffer, polar_to_euclid
-from helpers import State, AccelerationState, CircleState, Path, StateRange, SearchNode, TreeNode, Point
+from helpers import State, AccelerationState, CircleState, Path, StateRange, SearchNode, TreeNode
+from helpers import Point2D as Point
 from pathlib import arc_step, ackerman_radius
 from car_controller.control_module import ControlModule
 import whinytimer
 from profilehooks import profile, timecall
 
-from shapely.geometry import Point as GeoPoint
+# from shapely.geometry import Point as GeoPoint
 # from shapely.ops import union
 # from dynamical import DynamicModel
 
@@ -866,15 +867,15 @@ class SpaceExploration(HeuristicSearch):
         else:
             return True
 
-        r = min(s1.radius,s2.radius)
-        a = r*r*math.pi
+        # r = min(s1.radius,s2.radius)
+        # a = r*r*math.pi
 
         # TODO: the equation here might be faster than the library:
         # http://jwilson.coe.uga.edu/EMAT6680Su12/Carreras/EMAT6690/Essay2/essay2.html
-        p1 = GeoPoint(s1.x, s1.y).buffer(s1.radius)
-        p2 = GeoPoint(s2.x, s2.y).buffer(s2.radius)
+        # p1 = GeoPoint(s1.x, s1.y).buffer(s1.radius)
+        # p2 = GeoPoint(s2.x, s2.y).buffer(s2.radius)
 
-        return p1.intersection(p2).area / a > percentage
+        # return p1.intersection(p2).area / a > percentage
     
     def goal(self):
         g=self.goals.next_goal()
