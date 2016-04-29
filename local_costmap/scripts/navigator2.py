@@ -8,63 +8,40 @@ import whoami
 import math
 import tf.transformations
 import numpy as np
-from helpers import param
-
-Point = namedtuple('Point', ['x', 'y'])
-Pose = namedtuple('Pose', ['point', 'heading'])
-Wall = namedtuple('Wall', ['p1', 'p2'])
+from helpers import *
+import warnings
 
 class Navigator(object):
 
-    STRAIGHT_AHEAD = Pose(Point(param("navigator.straight_ahead_distance"), 0), 0)
+    STRAIGHT_AHEAD = (Point2D(param("navigator.straight_ahead_distance"), 0), 0)
     MIN_WALL_LENGTH = param("navigator.min_wall_length")
 
     def __init__(self, viz):
         self.viz = viz
-        self.goal = self.STRAIGHT_AHEAD
+        self.goal = self.STRAIGHT_AHEAD # (Point2D, heading)
+        self.sm = SplitMerge()
 
         # These are saved for viz
-        self.walls = [] # list of Walls
-        self.imagined_wall = None # Wall
-        self.corridor = None # Wall
+        self.walls = [] # list of Segments
+        self.imagined_wall = None # Segment
+        self.corridor = None # Segment
 
     def laser_update(self, laser_data):
         DISCONTINUITY_THRESHOLD = param("navigator.min_corridor_width")
-        INF = 1000.
+        #INF = 1000.
         ranges = np.array(laser_data.ranges)
         # print "Set STRAIGHT_AHEAD to", laser_data.range_max
         # Set range_max points to be really far, to force a discontinuity
         # (this might be only needed for the simulator)
-        ranges[ranges + 0.1 > laser_data.range_max] = INF
+        #ranges[ranges + 0.1 > laser_data.range_max] = INF
         angles = (np.arange(ranges.shape[0]) * laser_data.angle_increment) + laser_data.angle_min
         include_indices = np.where((angles > -math.pi/2.) & (angles < math.pi/2.))
         ranges = ranges[include_indices]
         angles = angles[include_indices]
-        discontinuities = np.hstack(([False],
-                np.abs(ranges[:-1] - ranges[1:]) > DISCONTINUITY_THRESHOLD))
-        labeled = np.cumsum(discontinuities)
-        labels = np.unique(labeled)
-        new_walls = []
-        for label in labels:
-            indices = np.where(labeled == label)[0]
-            i_left = indices[0]
-            i_right = indices[-1]
-            #if i_right - i_left < 5:
-            if self._polar_length(
-                    angles[i_left], ranges[i_left],
-                    angles[i_right], ranges[i_right]) < self.MIN_WALL_LENGTH:
-                # Skip really short "walls"
-                continue
-            if ranges[i_left] == INF:
-                # Skip adding a "wall" when it's the edge of the vision range
-                continue
-            left_point  = self._polar_to_point(ranges[i_left],  angles[i_left])
-            right_point = self._polar_to_point(ranges[i_right], angles[i_right])
-            new_walls.append([left_point, right_point])
-        self.walls = new_walls
-        self.corridors = np.array([[lw[1], rw[0]] for lw, rw in zip(self.walls, self.walls[1:])])
+        self.find_walls(ranges, angles)
+        self.corridors = [Segment(lw.p2, rw.p1) for lw, rw in zip(self.walls, self.walls[1:])]
         # Only include wide enough corridors
-        self.corridors = filter(lambda c: self._length(c) > 1, self.corridors)
+        self.corridors = filter(lambda c: length(c) > 1, self.corridors)
         # TODO: the corridor is not best described by the endpoints of each wall,
         # but rather the endpoint of one wall and the closest point on the other wall
         # (whichever combo comes out shorter). This would capture the "doorway".
@@ -75,46 +52,17 @@ class Navigator(object):
             centerpoint_x = (x0 + x1)/2.
             centerpoint_y = (y0 + y1)/2.
             centerpoint_heading = math.atan2(y1 - y0, x1 - x0) - math.pi/2.
-            self.goal = [centerpoint_x, centerpoint_y, centerpoint_heading]
+            self.goal = (Point2D(centerpoint_x, centerpoint_y), centerpoint_heading)
         else:
             self.goal = self.STRAIGHT_AHEAD
 
-    def _polar_to_point(self, distance, angle):
-        """ returns [x,y] """
-        return [distance*math.cos(angle), distance*math.sin(angle)]
-
-    def laser_to_xy(self, laser_data):
-        # TODO
-
-    def _length(self, segment):
-        [[x0, y0],[x1, y1]] = segment
-        l = math.sqrt((x1 - x0)**2 + (y1 - y0)**2)
-        return l
-
-    def _polar_length(self, a1, d1, a2, d2):
-        return self._length([self._polar_to_point(a1,d1), self._polar_to_point(a2, d2)])
-
-    def _fit_wall(self, angles, ranges):
-        xs = []
-        ys = []
-        for angle, rang in zip(angles, ranges):
-            x,y = self._polar_to_point(angle, rang)
-            xs.append(x)
-            ys.append(y)
-        b, m = np.polyfit(xs, ys, 1)
-        # ABANDONED
-
-    def find_walls(self, laser_data):
-        """ sets self.walls.
-        Use the method described here:
-        https://www.cs.princeton.edu/courses/archive/fall11/cos495/COS495-Lecture11-LineExtraction.pdf
-        Basically:
-        1. Start with all points part of the same segment. Fit a line (np.polyfit)
-        2. Find farthest outlying point, segment left/right of that point into 2 segments
-        3. Recurse on each segment splitting until the farthest outlying point is within ok bound.
-        4. Might have to recombine walls, IDK
-        """
-        pass
+    def find_walls(self, ranges, angles):
+        """ sets self.walls. """
+        print "started Split-Merge"
+        points = [polar_to_point(r,a) for r,a in zip(ranges, angles)]
+        walls = self.sm.run(points)
+        self.walls = walls#filter(lambda wall: length(wall) > self.MIN_WALL_LENGTH, walls)
+        print "finished Split-Merge", len(walls)
 
     def camera_update(self, camera_data):
         """
@@ -127,7 +75,7 @@ class Navigator(object):
         """
         Returns the current goal point as a list [x, y, heading] in the base frame.
         """
-        return self.goal[:]
+        return (self.goal[0].x, self.goal[0].y, self.goal[1])
 
     def visualize(self):
         """
@@ -171,9 +119,76 @@ class Navigator(object):
         walls.type = Marker.LINE_LIST
         walls.color = color
         for wall in segments:
-            walls.points.append(Point(wall[0][0], wall[0][1], 0))
-            walls.points.append(Point(wall[1][0], wall[1][1], 0))
+            walls.points.append(Point(wall.p1.x, wall.p1.y, 0))
+            walls.points.append(Point(wall.p2.x, wall.p2.y, 0))
         walls.scale.x = .1
         return walls
 
+
+class SplitMerge(object):
+    """ Split-and-Merge algorithm """
+    def __init__(self):
+        # TODO parameters
+        self.collinear_error = Line(
+                param("navigator.same_wall_error_m"),
+                param("navigator.same_wall_error_b"))
+        self.point_in_segment_error = 5
+        warnings.simplefilter('ignore', np.RankWarning)
+
+    def run(self, points):
+        """ Main entry point to the algorithm.
+        points is a list of Point2Ds
+        Returns a list of Walls
+        """
+        #return self.merge(self.split(points))
+        return self.split(points)
+
+    def split(self, points, iters=0):
+        """
+        Input: ordered list of Point2Ds
+        Output: list of Segments
+        """
+        if iters == 0:
+            print "splitting", len(points), "points"
+        if points == []:
+            return []
+        line = fit_line(points)
+        def error(point):
+            return euclidean_distance(point, closest_point(line, point))
+        worst = max(points, key=error)
+        #print map(error, points)
+        i = points.index(worst)
+        left = points[:i]
+        right = points[i+1:]
+        if iters % 100 == 0:
+            print "split depth", iters
+        #assert iters == 0
+        if error(worst) > self.point_in_segment_error:
+            r = self.split(left, iters+1) + self.split(right, iters+1)
+            if iters == 0:
+                print "FINISHED SPLIT", len(r)
+            return r
+        else:
+            if iters == 0:
+                print "FINISH SPLIT WITH NO ERROR"
+            return [points_to_segment(points)]
+
+    def merge(self, segments, iters=0):
+        """
+        Input: List of Segments
+        Output: List of Segments
+        """
+        if iters % 50 == 1:
+            print "split depth", iters
+        for i1, (l1, l2) in enumerate(zip(segments, segments[1:])):
+            if collinear(l1, l2, self.collinear_error):
+                new_segment = merge_segments(l1,l2)
+                new_segments = segments[:i1] + [new_segment] + segments[i1+2:] # preserve order
+                r = self.merge(new_segments, iters+1)
+                if iters == 0:
+                    print "FINISHED MERGE", len(r)
+                return r
+        if iters == 0:
+            print "FINISHED MERGE WITH NO STEPS", segments
+        return segments
 

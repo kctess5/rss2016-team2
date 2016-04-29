@@ -11,7 +11,9 @@ import whoami
 
 memo_table = {}
 
-Point = collections.namedtuple("Point", ["x", "y"])
+Point2D = collections.namedtuple("Point2D", ["x", "y"])
+Segment = collections.namedtuple("Segment", ["p1", "p2"])
+Line = collections.namedtuple("Line", ["m", "b"]) # y = mx + b
 State = collections.namedtuple("State", ["x", "y", "theta", "steering_angle", "speed"])
 AccelerationState = collections.namedtuple("AccelerationState", ["control_states", "steering_velocity", "linear_accel"])
 
@@ -70,10 +72,71 @@ def polar_to_euclid(angles, ranges):
     y = y * ranges
     return (x,y)
 
+def polar_to_point(distance, angle):
+    """ returns Point2D(x,y) """
+    x,y = polar_to_euclid(angle, distance)
+    return Point2D(x,y)
+
 def euclidean_distance(p1, p2):
     dx = p1.x - p2.x
     dy = p1.y - p2.y
     return math.sqrt(dx*dx+dy*dy)
+
+def length(segment):
+    return euclidean_distance(segment.p1, segment.p2)
+
+def fit_line(points):
+    """ Returns a Line which best fits the Point2Ds """
+    xs = [point.x for point in points]
+    ys = [point.y for point in points]
+    m,b = np.polyfit(xs, ys, 1)
+    return Line(m, b)
+
+def segment_to_line(segment):
+    p1, p2 = segment
+    m = (p1.y - p2.y)/float(p1.x - p2.x)
+    b = p1.y - m * p1.x
+    return Line(m, b)
+
+def closest_point(line, point):
+    """
+    Find the closest point on a Line to a Point2D.
+    Returns: Point2D(on_point_x, on_point_y)
+    """
+    main_line_slope, main_line_intercept = line
+    off_point_x, off_point_y = point
+    if main_line_slope == 0:
+        # If main_line is horizontal, then the result can quickly be determined.
+        return Point2D(off_point_x, main_line_intercept)
+    else:
+        # perp_line slope is main_line slope rotated 90deg.
+        perp_line_slope = - 1 / float(main_line_slope)
+    # perp_line crosses off_point.
+    perp_line_intercept = off_point_y - perp_line_slope * off_point_x
+
+    # on_point is the intersection of main_line and perp_line.
+    on_point_x = (main_line_intercept - perp_line_intercept) / float(perp_line_slope - main_line_slope)
+    # Plug on_point_x into main_line.
+    on_point_y = main_line_slope * on_point_x + main_line_intercept
+
+    return Point2D(on_point_x, on_point_y)
+
+def points_to_segment(points):
+    """ List of Point2Ds to a Segment using best fit line (so endpoints might not be in points) """
+    line = fit_line(points)
+    p1 = closest_point(line, points[0])
+    p2 = closest_point(line, points[-1])
+    return Segment(p1, p2)
+
+def merge_segments(s1, s2):
+    """ Create a single Segment from these 2 Segments. Assumes they're IN ORDER """
+    return points_to_segment([s1.p1, s1.p2, s2.p1, s2.p2])
+
+def collinear(s1, s2, error):
+    """ True iff the Lines of each Segment differ by less than the error Line """
+    l1 = segment_to_line(s1)
+    l2 = segment_to_line(s2)
+    return abs(l2.m - l1.m) < error.m and abs(l2.b - l1.b) < error.b
 
 class FrameBuffer:
     # bins/meter, (meters), (meters)

@@ -119,6 +119,10 @@ navigator:
   # Anything shorter is not a corridor
   min_corridor_width: 2.0
 
+  # This amount of error is acceptable to merge into 1 wall
+  same_wall_error_m: 2
+  same_wall_error_b: 0.17 # roughly 10 degrees
+
 # --------------------- #
 # Path Planner Parameters
 # --------------------- #
