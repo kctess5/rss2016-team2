@@ -36,11 +36,13 @@ class Navigator(object):
         # (this might be only needed for the simulator)
         #ranges[ranges + 0.1 > laser_data.range_max] = INF
         angles = (np.arange(ranges.shape[0]) * laser_data.angle_increment) + laser_data.angle_min
-        include_indices = np.where(ranges + 0.1 < laser_data.range_max)
+        include_indices = np.where((ranges + 0.1 < laser_data.range_max) &
+                (angles > -math.pi/2.) & (angles < math.pi/2.))
         ranges = ranges[include_indices]
         angles = angles[include_indices]
         self.find_walls(ranges, angles)
         self.corridors = [Segment(lw.p2, rw.p1) for lw, rw in zip(self.walls, self.walls[1:])]
+        #self.corridors = filter(lambda c: corrid
         # Only include wide enough corridors
         self.corridors = filter(lambda c: length(c) > 1, self.corridors)
         # TODO: the corridor is not best described by the endpoints of each wall,
@@ -62,7 +64,7 @@ class Navigator(object):
         #print "started Split-Merge"
         points = [polar_to_point(r,a) for r,a in zip(ranges, angles)]
         walls = self.sm.run(points)
-        self.walls = walls#filter(lambda wall: length(wall) > self.MIN_WALL_LENGTH, walls)
+        self.walls = filter(lambda wall: length(wall) > self.MIN_WALL_LENGTH, walls)
         #print "finished Split-Merge", len(walls)
 
     def camera_update(self, camera_data):
