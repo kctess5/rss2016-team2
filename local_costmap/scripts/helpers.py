@@ -90,6 +90,9 @@ def euclidean_distance(p1, p2):
 def length(segment):
     return euclidean_distance(segment.p1, segment.p2)
 
+def length2(segment):
+    return distance2(segment.p1, segment.p2)
+
 def fit_line(points):
     """ Returns a Line which best fits the Point2Ds """
     xs = [point.x for point in points]
@@ -102,6 +105,21 @@ def segment_to_line(segment):
     m = (p1.y - p2.y)/float(p1.x - p2.x)
     b = p1.y - m * p1.x
     return Line(m, b)
+
+def point_in_segment(segment, point):
+    """ True iff the closest point to point on the segment is not an end point of the segment. """
+    def subtract(p1, p2):
+        """ p1 - p2 """
+        return Point2D(p1.x - p2.x, p1.y - p2.y)
+    def dot(p1, p2):
+        """ p1 dot p2 """
+        return p1.x*p2.x + p1.y*p2.y
+    return 0 < dot(subtract(point, segment.p1), subtract(segment.p2, segment.p1)) < length2(segment)
+
+def closest_point_segment(segment, point):
+    if point_in_segment(segment, point):
+        return closest_point(segment_to_line(segment), point)
+    return min(segment.p1, segment.p2, key=lambda p: distance2(p, point))
 
 def closest_point(line, point):
     """

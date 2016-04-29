@@ -16,6 +16,7 @@ class Navigator(object):
 
     STRAIGHT_AHEAD = (Point2D(param("navigator.straight_ahead_distance"), 0), 0)
     MIN_WALL_LENGTH = param("navigator.min_wall_length")
+    MIN_CORRIDOR_WIDTH_2 = param("navigator.min_corridor_width")**2
 
     def __init__(self, viz):
         self.viz = viz
@@ -36,13 +37,8 @@ class Navigator(object):
         ranges = ranges[include_indices]
         angles = angles[include_indices]
         self.find_walls(ranges, angles)
-        self.corridors = [Segment(lw.p2, rw.p1) for lw, rw in zip(self.walls, self.walls[1:])]
-        #self.corridors = filter(lambda c: corrid
-        # Only include wide enough corridors
-        self.corridors = filter(lambda c: length(c) > 1, self.corridors)
-        # TODO: the corridor is not best described by the endpoints of each wall,
-        # but rather the endpoint of one wall and the closest point on the other wall
-        # (whichever combo comes out shorter). This would capture the "doorway".
+        self.find_good_corridors()
+        #self.find_right_corridor()
 
         if len(self.corridors) > 0:
             # Set goal to the rightmost corridor
@@ -51,6 +47,11 @@ class Navigator(object):
             centerpoint_y = (y0 + y1)/2.
             centerpoint_heading = math.atan2(y1 - y0, x1 - x0) - math.pi/2.
             self.goal = (Point2D(centerpoint_x, centerpoint_y), centerpoint_heading)
+            if distance2(self.goal[0], Point2D(0,0)) < 8:
+                # Move the goal point farr away
+                x = self.goal[0].x + math.cos(self.goal[1])*5
+                y = self.goal[0].y + math.sin(self.goal[1])*5
+                self.goal = (Point2D(x,y), self.goal[1])
         else:
             self.goal = self.STRAIGHT_AHEAD
 
@@ -61,6 +62,72 @@ class Navigator(object):
         walls = self.sm.run(points)
         self.walls = filter(lambda wall: length(wall) > self.MIN_WALL_LENGTH, walls)
         #print "finished Split-Merge", len(walls)
+
+    def find_good_corridors(self):
+        """ Find corridors """
+        corridors = []
+        for w2, w1 in zip(self.walls, self.walls[1:]):
+            p1 = w1.p2
+            p2 = w2.p1
+            improved_p1 = closest_point_segment(w2, p1)
+            improved_p2 = closest_point_segment(w1, p2)
+            if distance2(improved_p1, improved_p2) > self.MIN_CORRIDOR_WIDTH_2:
+                corridors.append(Segment(improved_p1, improved_p2))
+        self.corridors = corridors
+
+
+    def find_right_corridor(self):
+        """ Sets self.corridors (to contain only 1 corridor) based on self.walls. 
+        Algorithm:
+        * Rightmost wall = w1
+        * Endpoint of w1 = p1
+        * Next wall = w2
+        * Point on w2 closest to p1 = p2
+        * if distance(p1, p2) < min start over with w2 as w1
+          ( That excludes cases where this is not a discontinuity )
+        * If discontinuity is right of center or over center:
+          * w3 = line through p1 parallel to w2
+          * p3 = point on w3 closest to p2
+        * If discontinuity is left of center:
+          * w3 = line through p2 parallel to w1
+          * p3 = point on w3 closest to p1
+        * Corridor = p2--p3
+        """
+        walls = self.walls
+        while len(walls) > 2: # Can try to place a corridor
+            w1 = walls[0]
+            p1 = w1.p1
+            w2 = walls[1]
+            if point_in_segment(w2, p1):
+                p2 = closest_point(segment_to_line(w2), p1)
+            else:
+                p2 = min((w2.p1, w2.p2), key=lambda point: distance2(point, p1))
+            if distance2(p1, p2)< self.MIN_CORRIDOR_WIDTH_2:
+                walls = walls[1:]
+                continue
+            if p1.x < 0: # This is a corridor on the right (or center)
+                delta = Point2D(p1.x - p2.x, p1.y - p2.y)
+                w3_p1 = Point2D(w2.p1.x + delta.x, w2.p1.y + delta.y)
+                w3_p2 = Point2D(w2.p2.x + delta.x, w2.p2.y + delta.y)
+                w3_seg = Segment(w3_p1, w3_p2)
+                w3_line = segment_to_line(w3_seg)
+                p3 = closest_point(w3_line, p2)
+                self.corridors = [Segment(p3, p2)]
+                self.imagined_wall = w3_seg
+                return
+            else:
+                delta = Point2D(p2.x - p1.x, p2.y - p1.y)
+                w3_p1 = Point2D(w1.p1.x + delta.x, w1.p1.y + delta.y)
+                w3_p2 = Point2D(w1.p2.x + delta.x, w1.p2.y + delta.y)
+                w3_seg = Segment(w3_p1, w3_p2)
+                w3_line = segment_to_line(w3_seg)
+                p3 = closest_point(w3_line, p1)
+                self.corridors = [Segment(p1, p3)]
+                self.imagined_wall = w3_seg
+                return
+        self.corridors = []
+        self.imagined_wall = None
+
 
     def camera_update(self, camera_data):
         """
@@ -84,6 +151,7 @@ class Navigator(object):
             self.viz.publish("goals.next_goal", self._make_pose_marker(self.goal, ColorRGBA(0,1,1,1)))
         if self.viz.should_visualize("goals.walls"):
             self.viz.publish("goals.walls", self._make_segment_markers(self.walls, ColorRGBA(1,0,1,1)))
+            #self.viz.publish("goals.imagined_wall", self._make_segment_markers([self.imagined_wall], ColorRGBA(0,1,1,1)))
         if self.viz.should_visualize("goals.corridors"):
             self.viz.publish("goals.corridors", self._make_segment_markers(self.corridors, ColorRGBA(0,1,0,1)))
 

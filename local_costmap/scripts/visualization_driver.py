@@ -26,6 +26,7 @@ class VisualizationDriver(object):
 
         self.add_publisher("goals.next_goal", Marker)
         self.add_publisher("goals.walls", Marker)
+        self.add_publisher("goals.imagined_wall", Marker)
         self.add_publisher("goals.corridors", Marker)
 
         for k in self.channels.keys():
