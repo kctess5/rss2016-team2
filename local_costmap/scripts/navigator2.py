@@ -28,14 +28,9 @@ class Navigator(object):
         self.corridor = None # Segment
 
     def laser_update(self, laser_data):
-        DISCONTINUITY_THRESHOLD = param("navigator.min_corridor_width")
-        #INF = 1000.
         ranges = np.array(laser_data.ranges)
-        # print "Set STRAIGHT_AHEAD to", laser_data.range_max
-        # Set range_max points to be really far, to force a discontinuity
-        # (this might be only needed for the simulator)
-        #ranges[ranges + 0.1 > laser_data.range_max] = INF
         angles = (np.arange(ranges.shape[0]) * laser_data.angle_increment) + laser_data.angle_min
+        # Exclude out-of-bounds ranges by distance too far and by angle too deep
         include_indices = np.where((ranges + 0.1 < laser_data.range_max) &
                 (angles > -math.pi/2.) & (angles < math.pi/2.))
         ranges = ranges[include_indices]
@@ -131,16 +126,13 @@ class Navigator(object):
 class SplitMerge(object):
     """ Split-and-Merge algorithm """
     def __init__(self):
-        # TODO parameters
-        self.collinear_error = Line(
-                param("navigator.same_wall_error_m"),
-                param("navigator.same_wall_error_b"))
-        self.discontinuity_threshold_2 = .5#param("navigator.min_corridor_width")
-
-        self.angle_error = 0.17
-        self.distance_error = 0.4
-        self.point_in_segment_error = .4
+        # This is the *squared* discontinuity
+        self.discontinuity_threshold_2 = param("navigator.min_corridor_width")
+        self.angle_error = param("navigator.same_wall_error_angle")
+        self.distance_error = param("navigator.same_wall_error_distance")
+        self.point_in_segment_error = self.distance_error
         warnings.simplefilter('ignore', np.RankWarning)
+        self.downsample = param("navigator.downsample_every")
 
     #@profile(sort='tottime')
     def run(self, points):
@@ -150,7 +142,7 @@ class SplitMerge(object):
         """
         #return self.merge(self.split(points[::5]))
         all_split = []
-        for spoints in self.presplit(points[::5]):
+        for spoints in self.presplit(points[::self.downsample]):
             all_split.extend(self.split(spoints))
             #all_split.append(points_to_segment(spoints))
         return self.merge(all_split)
@@ -181,30 +173,23 @@ class SplitMerge(object):
         if points == []:
             return []
         line = fit_line(points)
-        def error(point):
-            return euclidean_distance(point, closest_point(line, point))
-        outliers = filter(lambda point: error(point) > self.point_in_segment_error, points)
+        def error2(point):
+            return distance2(point, closest_point(line, point))
+        outliers = filter(lambda point: error2(point) > self.point_in_segment_error**2, points)
         if outliers == []:
             return [points_to_segment(points)]
-        worst = min(outliers, key=lambda point: abs(points.index(point)-len(points)/2.))
         # Worst is the closest point to the middle which is worse than the threshold
-        #worst = max(points, key=error)
-        #print map(error, points)
+        # (This is a modification to basic split-merge which fixes an edge case)
+        worst = min(outliers, key=lambda point: abs(points.index(point)-len(points)/2.))
         i = points.index(worst)
         left = points[:i]
         right = points[i+1:]
         #if iters % 100 == 0:
         #    print "split depth", iters
-        #assert iters == 0
-        if error(worst) > self.point_in_segment_error:
-            #print "splitting on point", worst
+        if error2(worst) > self.point_in_segment_error**2:
             r = self.split(left, iters+1) + self.split(right, iters+1)
             #if iters == 0:
                 #print "FINISHED SPLIT", len(r)
-                #print map(segment_angle, r)
-                #print angdiff(segment_angle(r[0]), segment_angle(r[1]))
-                #print collinear(r[0], r[1], self.angle_error, self.distance_error)
-                #print collinear(r[1], r[2], self.angle_error, self.distance_error)
             return r
         else:
             #if iters == 0:

@@ -117,11 +117,14 @@ navigator:
   min_wall_length: 0.5
 
   # Anything shorter is not a corridor
-  min_corridor_width: 2.0
+  min_corridor_width: 0.5
 
   # This amount of error is acceptable to merge into 1 wall
-  same_wall_error_m: 2
-  same_wall_error_b: 0.17 # roughly 10 degrees
+  same_wall_error_angle: 0.17
+  same_wall_error_distance: 0.4
+
+  # Take every x laser points, for speed
+  downsample_every: 5
 
 # --------------------- #
 # Path Planner Parameters
