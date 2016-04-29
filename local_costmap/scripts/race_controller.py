@@ -12,11 +12,14 @@ from rospy.numpy_msg import numpy_msg
 import navigator2 as navigator
 from visualization_driver import VisualizationDriver
 from helpers import param, euclidean_distance, FrameBuffer, polar_to_euclid
-from helpers import State, AccelerationState, Path, StateRange, SearchNode, TreeNode, Point
+from helpers import State, AccelerationState, CircleState, Path, StateRange, SearchNode, TreeNode, Point
 from pathlib import arc_step, ackerman_radius
 from car_controller.control_module import ControlModule
 import whinytimer
 from profilehooks import profile, timecall
+
+from shapely.geometry import Point as GeoPoint
+# from shapely.ops import union
 # from dynamical import DynamicModel
 
 # Check that the dubins library supports path_length_segs.
@@ -31,77 +34,88 @@ except AttributeError:
     raise RuntimeError("Package 'dubins' does not support dubins.DubinsPath().path_length_segs.\n"
                        "Run $ sudo pip install git+https://github.com/mlsteele/pydubins.git")
 
-
-# Notes: 
-#   - Relies on the following external files:
-#       - navigator.py
-#       - helpers.py
-#       - pathlib.py 
-#           - very handy :D
-#       - whinytimer.py
-#           - death be to ros_time_moved_backwards error
-#   - Can be further split into different files if necessary:
-#       - DynamicsModel -> dynamics.py
-#       - ObstacleMap -> obstacles.py
-#       - HeuristicSearch -> pathsearch.py
-#       - I think everything else is sufficiently short and important at the moment to stay
-#         and I personally think that having most important logic in one file is good when 
-#         possible, because code folding is super effective
-#   - Info about states/paths:
-#       - States contain:
-#           x, y, theta - position/orientation local coordinates, based off of predicted motion
-#           speed, steering_angle - control commands for the car
-#       - I found that speed settings on the car generally correspond to real speed of the car
-#         so long as the maximal acceleration bounds are observed, so it does not have to be
-#         decoupled from x,y,theta does. Steering angle is not directly related to changes in
-#         theta, so the dynamic model is required to estimate where the car will end up after
-#         applying a chain of control states
-#       - Paths are just a list of states, they are applied consecutively. For now, the first
-#         state in the path defines the origin of the local coordinate space for that time step
-#         eventually we might want to use a "global" local coorinate space, where rather than
-#         resetting the origin at each timestep, move the believed "car position" according to 
-#         the full chain of states previously committed. This might make continious tree 
-#         construction more straightforward as we would not have to transform each node in the 
-#         search tree into the new local coorinate space between each iteration. It would 
-#         also be useful for visualizing how well the dynamical open-loop controller predicts motion
-#   - The emergency stop control is implemented as follows:
-#       - in the case where there are no remaining states to execute in the last committed 
-#         best path, the car will reuse it's previous control state while stopping as fast as possible
-#       - in the case where there is a path committed, but the path planner is unable to find
-#         a new path, it will continue the last committed path while stopping as fast as possible
-#       - if there are remaining control states then the path will continue as planned
-#   - Visualization
-#       - Subjects include:
-#           - goals
-#               - next goal (1)
-#               - corridor detector
-#                   - corridor (1)
-#                   - walls (2)
-#           - obstacles
-#               - in-admissible region (3) (NOT IMPLEMENTED)
-#           - path search
-#               - best path (1)
-#               - viable paths (1 or 2)
-#               - speed curves (1)
-#               - steering curves (1)
-#       - Notes:
-#           - Each topic does not advertise unless there are subscribers
+"""
+Notes: 
+  - Relies on the following external files:
+      - navigator.py
+      - helpers.py
+      - pathlib.py 
+          - very handy :D
+      - whinytimer.py
+          - death be to ros_time_moved_backwards error
+  - Can be further split into different files if necessary:
+      - DynamicsModel -> dynamics.py
+      - ObstacleMap -> obstacles.py
+      - HeuristicSearch -> pathsearch.py
+      - I think everything else is sufficiently short and important at the moment to stay
+        and I personally think that having most important logic in one file is good when 
+        possible, because code folding is super effective
+  - Info about states/paths:
+      - States contain:
+          x, y, theta - position/orientation local coordinates, based off of predicted motion
+          speed, steering_angle - control commands for the car
+      - I found that speed settings on the car generally correspond to real speed of the car
+        so long as the maximal acceleration bounds are observed, so it does not have to be
+        decoupled from x,y,theta does. Steering angle is not directly related to changes in
+        theta, so the dynamic model is required to estimate where the car will end up after
+        applying a chain of control states
+      - Paths are just a list of states, they are applied consecutively. For now, the first
+        state in the path defines the origin of the local coordinate space for that time step
+        eventually we might want to use a "global" local coorinate space, where rather than
+        resetting the origin at each timestep, move the believed "car position" according to 
+        the full chain of states previously committed. This might make continious tree 
+        construction more straightforward as we would not have to transform each node in the 
+        search tree into the new local coorinate space between each iteration. It would 
+        also be useful for visualizing how well the dynamical open-loop controller predicts motion
+  - The emergency stop control is implemented as follows:
+      - in the case where there are no remaining states to execute in the last committed 
+        best path, the car will reuse it's previous control state while stopping as fast as possible
+      - in the case where there is a path committed, but the path planner is unable to find
+        a new path, it will continue the last committed path while stopping as fast as possible
+      - if there are remaining control states then the path will continue as planned
+  - Visualization
+      - Subjects include:
+          - goals
+              - next goal (1)
+              - corridor detector
+                  - corridor (1)
+                  - walls (2)
+          - obstacles
+              - in-admissible region (3) (NOT IMPLEMENTED)
+          - path search
+              - best path (1)
+              - viable paths (1 or 2)
+              - speed curves (1)
+              - steering curves (1)
+      - Notes:
+          - Each topic does not advertise unless there are subscribers
  
-# Todos:
-#   - Accumulate the x, y, theta positions in the state history so that the percieved path may be 
-#     reconstructed relative to the start state
-#       - might also make continuous tree refinement easier, if that is necessary
-#   - Finish Dynamical model
-#       - still need to include the data I collected, planning on doing this before Sunday
-#       - I think that this will naturally improve search a lot, because faster paths will have
-#         lower curvature
-#   - Better heuristics
-#   - Potentially different path cost metrics
-#   - Continiously refining a single tree, rather than building a whole new one on every timestep
-#   - Decoupling path planning and path execution so that more than one path segment is executed per plan
-#   - Vision based goal integration
-#   - Cooridor detector should detect dead ends and put a goal point behind the robot if one is found
+Todos:
+  - Accumulate the x, y, theta positions in the state history so that the percieved path may be 
+    reconstructed relative to the start state
+      - might also make continuous tree refinement easier, if that is necessary
+  - Finish Dynamical model
+      - still need to include the data I collected, planning on doing this before Sunday
+      - I think that this will naturally improve search a lot, because faster paths will have
+        lower curvature
+  - Better heuristics
+  - Potentially different path cost metrics
+  - Continiously refining a single tree, rather than building a whole new one on every timestep
+  - Decoupling path planning and path execution so that more than one path segment is executed per plan
+  - Vision based goal integration
+  - Cooridor detector should detect dead ends and put a goal point behind the robot if one is found
 
+Citations:
+    [1] C. Chen, M. Rickert, and A. Knoll, "Combining space exploration and
+        heuristic search in online motion planning for nonholonomic vehicles",
+        in Proc. IEEE Intelligent Vehicles Symposium, 2013, pp. 1307-1312.
+        http://www6.in.tum.de/Main/Publications/ChenChao2013a.pdf
+
+    [2] O. Brock and L. E. Kavraki, "Decomposition-based motion planning:
+        Towards real-time planning for robots with many degrees of freedom,"
+        Rice University, Houston, TX, USA, Tech. Rep. TR00-367, Aug. 2000.
+
+"""
 
 class DynamicModel(object):
     """ Encapsulates the dynamics of the car """
@@ -283,7 +297,6 @@ class DynamicModel(object):
 
         return min_time
 
-
 DYNAMICS = DynamicModel()
 
 class ObjectManager(object):
@@ -397,7 +410,6 @@ class GoalManager(object):
         self.navigator.laser_update(data)
         self.navigator.visualize()
 
-
 class HeuristicSearch(object):
     """ Perform heuristic search on the provided set of cost/admissibility/heuristic/neighbor functions """
     def __init__(self):
@@ -413,6 +425,7 @@ class HeuristicSearch(object):
 
     def reset(self, start_state):
         # Frontier is a priority queue.
+        self.closed_set = []
         self.frontier = []
         self.found_paths = []
         self.goal_state = self.goal()
@@ -442,27 +455,9 @@ class HeuristicSearch(object):
         parent_score, parent_state = heapq.heappop(self.frontier)
         parent_tree_node = parent_state.tree_node
 
-        # print()
-        # print()
-        # print("PARENT")
-        # # parent_state
-        # print("accel state:", parent_state.state.linear_accel, parent_state.state.steering_velocity)
-        # # print("candidate controls:", candidate_controls)
-        # print("first control_state", parent_state.state.control_states[0])
-        # print("lasat control_state", parent_state.state.control_states[-1])
-
         for neighbor_state in self.neighbors(parent_state.state):
-
-            # print("CHILD")
-            # print("accel state:", neighbor_state.linear_accel, neighbor_state.steering_velocity)
-            # print("first control_state", neighbor_state.control_states[0])
-            # print("lasat control_state", neighbor_state.control_states[-1])
-
-            # print ("testing neighbor", neighbor_state)
             # prune any path segments that are bound to fail
-            if self.is_admissible(neighbor_state):
-                # print(neighbor_state.theta)
-
+            if not self.should_bail(neighbor_state, self.goal_state) and self.is_admissible(neighbor_state):
                 # build the tree representation of the search
                 ntn = TreeNode(state=neighbor_state, children=[])
                 parent_tree_node.children.append(ntn)
@@ -474,11 +469,10 @@ class HeuristicSearch(object):
                 score = nss.cost + nss.heuristic
                 if self.goal_met(neighbor_state, self.goal_state):
                     heapq.heappush(self.found_paths, (score, nss))
-                elif self.should_bail(neighbor_state, self.goal_state):
-                    # allow the search state to fall out of scope
-                    pass
                 else:
                     heapq.heappush(self.frontier, (score, nss))
+
+        self.closed_set.append(parent_state.state)
 
         self.step_count += 1
 
@@ -500,7 +494,7 @@ class HeuristicSearch(object):
     def complete_paths(self):
         return map(lambda x: self.make_path(x[1]), self.found_paths)
 
-    def make_path(self, end_node):
+    def make_path(self, end_node, add_goal=False):
         # a path is a list of control states, in the order of traversal
         # builds it in reverse order by following parent pointers, then reverses result
         path = [end_node.state]
@@ -510,6 +504,9 @@ class HeuristicSearch(object):
         # don't execute the start state
         path.pop()
         path.reverse()
+
+        if add_goal:
+            path.append(self.goal_state)
 
         if type(end_node.state) == AccelerationState:
             path = reduce(lambda x,y: x+y, map(lambda x: x.control_states, path))
@@ -544,7 +541,7 @@ class HeuristicSearch(object):
 
     def neighbors(self, state):
         # return a discretized set of neighbors of the given state
-        raise NotImplementedError("HeuristicSearch is_admissible not specified")
+        raise NotImplementedError("HeuristicSearch neighbors not specified")
         
 class PathPlanner(HeuristicSearch):
     """docstring for PathPlanner"""
@@ -660,7 +657,7 @@ class AccelerationPlanner(HeuristicSearch):
     """
     def __init__(self, obstacles, goals):
         # self.steering_options = [[-1.0,0.0,1.0], [-1.0, -0.5, -.15, -0.05, 0.0, 0.05, 0.15, 0.5, 1.0]]
-        self.steering_options = [[-1.0,0.0, 1.0], [-0.4, -.2, -0.08, -0.03, 0.0, 0.03, 0.08, 0.2, 0.4]]
+        self.steering_options = [[-1.0,0.0, 1.0], [-0.4, -.15, -0.04, 0.0, 0.04, 0.15, 0.4]]
         # self.steering_options = [[], [-0.1, 0.0, 0.4]]
         self.steering_options = map(lambda l: map(lambda x: float(param("dynamics.max_angular_velocity"))*x, l), self.steering_options)
 
@@ -831,88 +828,109 @@ class AccelerationPlanner(HeuristicSearch):
             AccelerationState(control_states=DYNAMICS.propagate_accel(start_state, cc[0], cc[1]), steering_velocity=cc[1], linear_accel=cc[0]), \
                 candidate_controls)
 
-    # def neighbors(self, accel_state):
-    #     # print("neighbors called on:", accel_state)
-    #     start_state = accel_state.control_states[-1]
-    #     # TODO: precompute these options, and use a set of better spaced options
-    #     # linear accel options: max accel, max decel, unity
+class SpaceExploration(HeuristicSearch):
+    """ This class implements lower dimensional search to provide a high quality
+        heuristic for higher dimensional path planning. If this search fails to 
+        provide a solution, then there is a good chance that no solution exists
+        and the car should just stop
+
+        See: [1,2]
+    """
+    def __init__(self, obstacles, goals):
+        # cache reused values
+        step = math.pi * 2.0 / param("space_explorer.branch_factor")
+        self.thetas = np.linspace(0, math.pi * 2.0 - step, num=param("space_explorer.branch_factor"))
+        self.radii = np.empty(param("space_explorer.branch_factor"))
         
-    #     if start_state.speed < param("epsilon"):
-    #         # TODO: might want to consider a lower acceleration option for dealing with turning sharper while stuck
-    #         linear_accel_options = [param("dynamics.max_linear_accel")] 
-    #     else:
-    #         # limit the max speed at any given point in space to avoid going too fast near obstacles
-    #         max_target_speed = self.max_speed_given_dist(self.obstacles.dist_at(accel_state.control_states[-1]))
-    #         current_speed = accel_state.control_states[-1].speed
+        self.goals = goals
+        self.obstacles = obstacles
 
-    #         # this is positive if the car is over speed
-    #         diff = current_speed - max_target_speed
-    #         accel_target = param("execution_freq")*(max_target_speed - current_speed)/param("planner.control_decisions_per_segment")
+        super(SpaceExploration, self).__init__()
 
-            
+    def circle_radius(self, state):
+        return self.obstacles.dist_at(state) - param("obstacle_map.min_distance")
 
-    #         if accel_target < param("dynamics.max_linear_decel"):
-    #             # linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")] 
-    #             linear_accel_options = [param("dynamics.max_linear_decel")] 
-    #         elif accel_target > param("dynamics.max_linear_accel"):
-    #             linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")]
-    #         else:
-    #             linear_accel_options = [param("dynamics.max_linear_decel"), accel_target]
+    def reset(self, start_state):
+        # Frontier is a priority queue.
+        start_state = CircleState(x=start_state.x, y=start_state.y, radius=self.circle_radius(start_state))
+        super(SpaceExploration, self).reset(start_state)
 
+    def cost(self, state):
+        return state.radius
+    def heuristic(self, state, goal_state):
+        return (euclidean_distance(state,goal_state) - state.radius)*param("space_explorer.heuristic_bias")
+    def overlap(self, s1, s2, percentage=.15):
+        # NOTE: this is a bit of a hack to go faster, percentage overlap not accurate
+        if euclidean_distance(s1, s2) > (s1.radius + s2.radius)*(1.0-percentage):
+            return False
+        else:
+            return True
 
-    #         # print(accel_target, param("dynamics.max_linear_accel"), current_speed)
-    #         # max_accel = 
-    #         # param("planner.control_decisions_per_segment") 
-    #         # param("execution_freq") 
-            
-    #         # param("dynamics.max_linear_accel") 
-    #         # param("dynamics.max_linear_decel")
-    #     # steering options: max steeing velocity in both directions,
-        
-    #     # NOTE: angular branch factor should be odd
-    #     # only considers the admissible options
-    #     steering_options = self.steering_options
-    #     if abs(start_state.steering_angle + param("dynamics.max_deflection")) < param("epsilon"):
-    #         steering_options = map(lambda x: filter(lambda opt: opt >= 0, x), steering_options)
-    #         # steering_velocity_options = np.linspace(0, param("dynamics.max_angular_velocity"), (param("planner.angular_branch_factor")+1)/2)
-    #     elif abs(start_state.steering_angle - param("dynamics.max_deflection")) < param("epsilon"):
-    #         steering_options = map(lambda x: filter(lambda opt: opt <= 0, x), steering_options)
-    #         # steering_velocity_options = np.linspace(-param("dynamics.max_angular_velocity"), 0, (param("planner.angular_branch_factor")+1)/2)
-        
+        r = min(s1.radius,s2.radius)
+        a = r*r*math.pi
 
-    #     candidate_controls = []
-    #     for i in xrange(len(linear_accel_options)):
-    #         candidate_controls += list(itertools.product([linear_accel_options[i]], steering_options[i]))
+        # TODO: the equation here might be faster than the library:
+        # http://jwilson.coe.uga.edu/EMAT6680Su12/Carreras/EMAT6690/Essay2/essay2.html
+        p1 = GeoPoint(s1.x, s1.y).buffer(s1.radius)
+        p2 = GeoPoint(s2.x, s2.y).buffer(s2.radius)
 
-    #     print(candidate_controls)
+        return p1.intersection(p2).area / a > percentage
+    
+    def goal(self):
+        g=self.goals.next_goal()
+        r = self.circle_radius(g)
+        # if the goal is out of bounds it returns a very large value, fix that
+        if r > 100:
+            r = 1.0
+        return CircleState(x=g.x, y=g.y, radius=r)
 
-    #     # else:
-    #     #     steering_velocity_options = np.linspace(-param("dynamics.max_angular_velocity"), param("dynamics.max_angular_velocity"), param("planner.angular_branch_factor"))
-    #     # remove any options that will have negative or zero speeds
-        
-    #     # candidate_controls = list(itertools.product(linear_accel_options, steering_velocity_options))
+    def goal_met(self, state, goal_state):
+        return self.overlap(state, goal_state, float(param("space_explorer.overlap_percentage_goal")))
 
-    #     # print()
-    #     # print("accel state:", accel_state.linear_accel, accel_state.steering_velocity)
-    #     # print("candidate controls:", candidate_controls)
-    #     # print("first control_state", accel_state.control_states[0])
-    #     # print("lasat control_state", accel_state.control_states[-1])
-    #     # print(accel_state.steering_velocity, accel_state.linear_accel, accel_state.control_states[0], accel_state.control_states[-1])
-    #     # print("    - candidate controls:", candidate_controls)
-    #     # print("    - control states:", self.control_states(start_state, candidate_controls[0][0], candidate_controls[0][1]))
+    def is_admissible(self, state):
+        return self.obstacles.dist_at(state) > param("space_explorer.min_radius")
 
-    #     # map each control choice to an actual search state, complete with intermediate control states
-    #     return map( lambda cc: \
-    #         AccelerationState(control_states=DYNAMICS.propagate_accel(start_state, cc[0], cc[1]), steering_velocity=cc[1], linear_accel=cc[0]), \
-    #             candidate_controls)
+    def should_bail(self, state, goal_state):
+        # too_far
+        if euclidean_distance(state, Point(0,0)) > param("space_explorer.max_distance"):
+            return True
+        # too big
+        if state.radius > param("space_explorer.max_distance"):
+            return True
+        # too behind
+        if state.x < param("space_explorer.back_limit"):
+            return True
 
-    #     # neighbors = []
+        # return False
+        # overlaps with another node
+        return True in map(lambda x: euclidean_distance(x,state) < x.radius, self.closed_set)
 
-    #     # for i in candidate_controls:
-    #     #     cs = self.control_states(start_state, i[0], i[1])
-    #     #     AccelerationState(states=cs, steering_velocity=i[1], linear_accel=i[0])
-    #     #     neighbors.push(cs)
+    def search(self, time_limit):
+        # same as before, but this returns early if paths are found
+        start_time = time.time()
 
+        # extend nodes until the time limit is reached
+        while time.time() - start_time < time_limit and not len(self.found_paths):
+            if len(self.frontier) == 0:
+                print("Search failed, bailing early")
+                return
+            self._step()
+
+        return time.time() - start_time
+
+    def neighbors(self, state):
+        self.radii.fill(state.radius)
+        xs, ys = polar_to_euclid(self.thetas, self.radii)
+
+        return map(lambda x: CircleState( \
+            x=state.x+x[0], y=state.y+x[1], radius=self.circle_radius(Point(x=state.x+x[0], y=state.y+x[1]))),
+                zip(xs,ys))
+
+    def best(self):
+        if len(self.found_paths) > 0:
+            return self.make_path(self.found_paths[0][1], True)
+        return None
+    
 class ChallengeController(ControlModule):
     """ Top level car control for the 6.141 Challenge"""
     def __init__(self):
@@ -929,6 +947,8 @@ class ChallengeController(ControlModule):
 
         self.goals = GoalManager(self.viz)
         self.obstacles = ObstacleMap()
+        if param("space_explorer.enabled"):
+            self.space_explorer = SpaceExploration(self.obstacles, self.goals)
         self.path_planner = AccelerationPlanner(self.obstacles, self.goals)
 
         # hook up necessary data flow
@@ -988,58 +1008,60 @@ class ChallengeController(ControlModule):
 
     @profile(sort='tottime')
     def compute_control(self, event=None):
-         # print("VIZ")
-        # print()
-        # if self.viz.should_visualize("path_search.viable_paths"):
-        #     print("VIZ")
-        #     ss = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
-        #     ass = AccelerationState(control_states=[ss], linear_accel=0, steering_velocity=1.5)
-        #     t = self.path_planner.bfs_tree(3, ass)
-
-        #     # for i in t.children:
-        #     #     print (i)
-
-        #     self.viz.publish_viable_paths(t)
-
-        # return
-
         if not self.obstacles.first_laser_recieved:
             print("Waiting for laser data...")
             return False
 
         start_state = State(x=0, y=0, theta=0, \
+            # steering_angle=self.state_history[-1].steering_angle, speed=param("dynamics.max_speed"))
             steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
         start_accel_state = AccelerationState(control_states=[start_state], linear_accel=0, steering_velocity=0)
 
-        self.path_planner.reset(start_state=start_accel_state)
-        self.path_planner.search(time_limit=0.8/float(param("planning_freq")))
+        best_path = None
+        if param("space_explorer.enabled"):
+            self.space_explorer.reset(start_state=start_state)
+            t = self.space_explorer.search(time_limit=0.5/float(param("planning_freq")))
+            # print(t, self.space_explorer.step_count)
+            if not self.space_explorer.best():
+                print("NO PATH FOUND")
+            if self.viz.should_visualize("space_explorer.explored"):
+                self.viz.publish_exploration_circles(self.space_explorer.tree_root)
+            if self.viz.should_visualize("space_explorer.path") and self.space_explorer.best():
+                self.viz.publish_path_circles(self.space_explorer.best())
+            
+        else:
+            self.path_planner.reset(start_state=start_accel_state)
+            self.path_planner.search(time_limit=0.8/float(param("planning_freq")))
 
-        best_path = self.path_planner.best()
+            best_path = self.path_planner.best()
+            if best_path:
+                speeds = map(lambda x: round(x.speed,2), best_path.states)
+                print(speeds)
 
         
 
-        # if best_path and type(best_path.states[0]) == AccelerationState:
-        #     control_states = reduce(lambda x,y: x+y, map(lambda x: x.control_states, best_path.states))
-        #     best_path = Path(states=control_states)
+            # if best_path and type(best_path.states[0]) == AccelerationState:
+            #     control_states = reduce(lambda x,y: x+y, map(lambda x: x.control_states, best_path.states))
+            #     best_path = Path(states=control_states)
 
-        # 
-        # start_state = State(x=0, y=0, theta=0, \
-        #     steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
-        # self.path_planner.reset(start_state=start_state)
-        # # search for a viable path, taking at most half the available computation time
-        # self.path_planner.search(time_limit=0.5/float(param("planning_freq")))
-        # # choose the best path
-        # profile = map(lambda x: (x.linear_accel, x.steering_velocity), self.path_planner.best().states)
-        # best_path = reduce(lambda x,y: x+y, map(lambda x: x.control_states, self.path_planner.best().states))
-        # print(best_path)
-        # print(profile)
-        # # best_path = reduce(lambda x,y: x+y, map(lambda x: x.control_states, self.path_planner.best()))
-        # print()
-        # for i in self.path_planner.best().states:
-        #     print(i)
-        # print(best_path[0])
+            # 
+            # start_state = State(x=0, y=0, theta=0, \
+            #     steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+            # self.path_planner.reset(start_state=start_state)
+            # # search for a viable path, taking at most half the available computation time
+            # self.path_planner.search(time_limit=0.5/float(param("planning_freq")))
+            # # choose the best path
+            # profile = map(lambda x: (x.linear_accel, x.steering_velocity), self.path_planner.best().states)
+            # best_path = reduce(lambda x,y: x+y, map(lambda x: x.control_states, self.path_planner.best().states))
+            # print(best_path)
+            # print(profile)
+            # # best_path = reduce(lambda x,y: x+y, map(lambda x: x.control_states, self.path_planner.best()))
+            # print()
+            # for i in self.path_planner.best().states:
+            #     print(i)
+            # print(best_path[0])
 
-        print("Computed control with " + str(self.path_planner.step_count) + " graph extensions")
+            print("Computed control with " + str(self.path_planner.step_count) + " graph extensions")
 
         if best_path == None:
             # perform default stuck control

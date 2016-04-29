@@ -15,6 +15,9 @@ class VisualizationDriver(object):
         self.channels = {}
         self.last_pubs = {}
 
+        self.add_publisher("space_explorer.explored", MarkerArray)
+        self.add_publisher("space_explorer.path", MarkerArray)
+
         self.add_publisher("path_search.best_path", Marker)
         self.add_publisher("path_search.complete_paths", MarkerArray)
         self.add_publisher("path_search.viable_paths", MarkerArray)
@@ -77,35 +80,33 @@ class VisualizationDriver(object):
         marker_array = MarkerArray(markers=markers)
         self.publish("path_search.complete_paths", marker_array)
 
+    def non_overlapping_paths(self, node):
+        # given a tree data structure, this function will return list of lists of the
+        # node "state" attributes
+        # if visualized as a tree, these states will not contain overlapping segments
+        if not node.children:
+            return [node.state]
+        else:
+            paths = []
+
+            for child in node.children:
+                child_paths = self.non_overlapping_paths(child)
+
+                if type(child_paths[0]) == list:
+                    # child is not a leaf node, add self to first path and store
+                    child_paths[0].insert(0, node.state)
+                    paths = paths + child_paths
+                else:
+                    # this is a leaf node, add self to path and store
+                    child_paths.insert(0, node.state)
+                    paths.append(child_paths)
+
+            return paths
 
     # publishes the whole path tree, making sure not to duplicate path segments
     def publish_viable_paths(self, path_tree):
         markers = [self.marker_clear_all()]
-
-        def non_overlapping_paths(node):
-            # given a tree data structure, this function will return list of lists of the
-            # node "state" attributes
-            # if visualized as a tree, these states will not contain overlapping segments
-            if not node.children:
-                return [node.state]
-            else:
-                paths = []
-
-                for child in node.children:
-                    child_paths = non_overlapping_paths(child)
-
-                    if type(child_paths[0]) == list:
-                        # child is not a leaf node, add self to first path and store
-                        child_paths[0].insert(0, node.state)
-                        paths = paths + child_paths
-                    else:
-                        # this is a leaf node, add self to path and store
-                        child_paths.insert(0, node.state)
-                        paths.append(child_paths)
-
-                return paths
-
-        candidate_paths = non_overlapping_paths(path_tree)
+        candidate_paths = self.non_overlapping_paths(path_tree)
 
         if type(candidate_paths[0][0]) == AccelerationState:
             candidate_paths = map(lambda path: 
@@ -120,8 +121,51 @@ class VisualizationDriver(object):
 
         self.publish("path_search.viable_paths", marker_array)
 
-    # def publish_viable_accel_paths
+    def marker_from_circle(self, circle, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., lifetime=10.0):
+        marker = Marker()
+        marker.header = Header(
+            stamp=rospy.Time.now(),
+            frame_id="base_link")
 
+        marker.ns = "Markers_NS"
+        marker.id = index
+        marker.type = Marker.CYLINDER
+        marker.action = 0 # action=0 add/modify object
+        marker.color = color
+        marker.lifetime = rospy.Duration.from_sec(lifetime)
+
+        marker.pose = Pose()
+        marker.pose.position.z = z
+        marker.pose.position.x = circle.x
+        marker.pose.position.y = circle.y
+
+        marker.scale = Vector3(circle.radius*2.0, circle.radius*2.0, 0)
+
+        return marker
+
+    # def publish_viable_accel_paths
+    def publish_exploration_circles(self, circle_tree):
+        markers = [self.marker_clear_all()]
+        explored = self.non_overlapping_paths(circle_tree)
+        if type(explored[0]) == list:
+            explored = reduce(lambda x,y: x+y, explored)
+        # print(len(explored))
+
+        markers += [self.marker_from_circle(circle, index=i, linewidth=0.01, color=ColorRGBA(0, 1, 0, 0.1), \
+                    lifetime=1.0/float(self.get_info("space_explorer.explored")["rate_limit"]))
+                    for i, circle in enumerate(explored)]
+        marker_array = MarkerArray(markers=markers)
+
+        self.publish("space_explorer.explored", marker_array)
+
+    def publish_path_circles(self, circle_path):
+        markers = [self.marker_clear_all()]
+        markers += [self.marker_from_circle(circle, index=i, linewidth=0.05, color=ColorRGBA(1, 0, 0, 0.4), \
+                    lifetime=1.0/float(self.get_info("space_explorer.path")["rate_limit"]))
+                    for i, circle in enumerate(circle_path.states)]
+        
+        marker_array = MarkerArray(markers=markers)
+        self.publish("space_explorer.path", marker_array)
 
     def marker_from_path(self, states, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., lifetime=10.0):
         marker = Marker()
