@@ -8,6 +8,15 @@
   #   3 - debug viz, may significantly slow down runtime
 # ---------------- #
 
+space_explorer: 
+  enabled: false
+  overlap_percentage_goal: 0.15
+  min_radius: 0.5
+  branch_factor: 16
+  max_distance: 15
+  back_limit: -1.0
+  heuristic_bias: 2.0
+
 epsilon: 0.001
 
 viz:
@@ -59,9 +68,21 @@ viz:
         level: 1
         rate_limit: 10
         type: "float"
+    space_explorer:
+      explored:
+        level: 1
+        rate_limit: 5
+        type: "circles"
+        color: [0,0,0,1]
+      path:
+        level: 1
+        rate_limit: 5
+        type: "circles"
+        color: [0,0,0,1]
+
 
 # wheel_base: 0.27
-planning_freq: 4
+planning_freq: 7
 execution_freq: 15
 
 runtime_specific:
@@ -90,22 +111,6 @@ obstacle_map:
   admissible_hop: 2.0
 
 # ----------------------- #
-# Dynamics Model Parameters
-# ----------------------- #
-
-# dynamics:
-#   # max acceleration in meters/sec or rad/sec
-#   # for now these are guesses, testing should be used to find the optimal values
-#   max_linear_accel: 5
-#   max_linear_decel: -8
-#   max_angular_accel: 1.5
-  
-#   # bounds on mechanical capabilities
-#   # 10mph ~= 4.47 m/s
-#   max_speed: 3
-#   max_deflection: 0.35
-
-# ----------------------- #
 # Navigator Parameters
 # (wall/corridor detection)
 # ----------------------- #
@@ -114,10 +119,11 @@ navigator:
   straight_ahead_distance: 10
 
   # Anything shorter is not a wall
-  min_wall_length: 0.5
+  min_wall_length: 0.3
 
   # Anything shorter is not a corridor
-  min_corridor_width: 2.0
+  # min_corridor_width: 2.0
+  min_corridor_width: 1.2
 
 # --------------------- #
 # Path Planner Parameters
@@ -139,7 +145,7 @@ planner:
   backup_speed: -1.0
 
   # number of control states per branch
-  control_decisions_per_segment: 6
+  control_decisions_per_segment: 5
 
   # max planning distance. paths are terminated when they are above this (meters)
   max_planning_dist: 5
@@ -148,7 +154,7 @@ planner:
   # heuristic is biased (multiplied) by this value once computed
   # setting this high makes the search more like dfs, low is
   # more like bfs. 1 is theortically optimal?
-  heuristic_bias: 1.07
+  heuristic_bias: 1.8
 
 # ------------------ #
 # Emergency Parameters

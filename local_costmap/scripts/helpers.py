@@ -14,6 +14,8 @@ memo_table = {}
 Point = collections.namedtuple("Point", ["x", "y"])
 State = collections.namedtuple("State", ["x", "y", "theta", "steering_angle", "speed"])
 AccelerationState = collections.namedtuple("AccelerationState", ["control_states", "steering_velocity", "linear_accel"])
+CircleState = collections.namedtuple("CircleState", ["radius", "x", "y"])
+
 
 Path  = collections.namedtuple("Path", ["states"])
 # min and max are both States, with values set to the min/max of each field
