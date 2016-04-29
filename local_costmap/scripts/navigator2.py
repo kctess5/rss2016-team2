@@ -59,11 +59,11 @@ class Navigator(object):
 
     def find_walls(self, ranges, angles):
         """ sets self.walls. """
-        print "started Split-Merge"
+        #print "started Split-Merge"
         points = [polar_to_point(r,a) for r,a in zip(ranges, angles)]
         walls = self.sm.run(points)
         self.walls = walls#filter(lambda wall: length(wall) > self.MIN_WALL_LENGTH, walls)
-        print "finished Split-Merge", len(walls)
+        #print "finished Split-Merge", len(walls)
 
     def camera_update(self, camera_data):
         """
@@ -103,15 +103,15 @@ class Navigator(object):
         return x
 
     def _make_pose_marker(self, pose, color):
-        """ pose is [x,y,heading] """
+        """ pose is (Point2D(x,y),heading) """
         goal = self._init_marker()
         goal.type = Marker.ARROW
         goal.color = color
         goal.pose = Pose()
         goal.pose.position.z = 0.
-        goal.pose.position.x = pose[0]
-        goal.pose.position.y = pose[1]
-        goal.pose.orientation = Quaternion(*tf.transformations.quaternion_from_euler(0,0,pose[2]))
+        goal.pose.position.x = pose[0].x
+        goal.pose.position.y = pose[0].y
+        goal.pose.orientation = Quaternion(*tf.transformations.quaternion_from_euler(0,0,pose[1]))
         goal.scale = Vector3(.5, .1, .1)
         return goal
 
@@ -135,7 +135,7 @@ class SplitMerge(object):
                 param("navigator.same_wall_error_b"))
         self.discontinuity_threshold_2 = .5#param("navigator.min_corridor_width")
 
-        self.angle_error = 0.1
+        self.angle_error = 0.17
         self.distance_error = 0.4
         self.point_in_segment_error = .4
         warnings.simplefilter('ignore', np.RankWarning)
@@ -166,7 +166,7 @@ class SplitMerge(object):
         output = []
         for i,j in zip(splits, splits[1:]):
             output.append(points[i+1:j+1])
-        print len(output), "presplit segments"
+        #print len(output), "presplit segments"
         return output
 
     def split(self, points, iters=0):
@@ -174,34 +174,39 @@ class SplitMerge(object):
         Input: ordered list of Point2Ds
         Output: list of Segments
         """
-        if iters == 0:
-            print "splitting", len(points), "points"
+        #if iters == 0:
+        #    print "splitting", len(points), "points"
         if points == []:
             return []
         line = fit_line(points)
         def error(point):
             return euclidean_distance(point, closest_point(line, point))
-        worst = max(points, key=error)
+        outliers = filter(lambda point: error(point) > self.point_in_segment_error, points)
+        if outliers == []:
+            return [points_to_segment(points)]
+        worst = min(outliers, key=lambda point: abs(points.index(point)-len(points)/2.))
+        # Worst is the closest point to the middle which is worse than the threshold
+        #worst = max(points, key=error)
         #print map(error, points)
         i = points.index(worst)
         left = points[:i]
         right = points[i+1:]
-        if iters % 100 == 0:
-            print "split depth", iters
+        #if iters % 100 == 0:
+        #    print "split depth", iters
         #assert iters == 0
         if error(worst) > self.point_in_segment_error:
             #print "splitting on point", worst
             r = self.split(left, iters+1) + self.split(right, iters+1)
-            if iters == 0:
-                print "FINISHED SPLIT", len(r)
+            #if iters == 0:
+                #print "FINISHED SPLIT", len(r)
                 #print map(segment_angle, r)
                 #print angdiff(segment_angle(r[0]), segment_angle(r[1]))
                 #print collinear(r[0], r[1], self.angle_error, self.distance_error)
                 #print collinear(r[1], r[2], self.angle_error, self.distance_error)
             return r
         else:
-            if iters == 0:
-                print "FINISH SPLIT WITH NO ERROR"
+            #if iters == 0:
+            #    print "FINISH SPLIT WITH NO ERROR"
             return [points_to_segment(points)]
 
     def merge(self, segments, iters=0):
@@ -209,17 +214,17 @@ class SplitMerge(object):
         Input: List of Segments
         Output: List of Segments
         """
-        if iters % 50 == 1:
-            print "split depth", iters
+        #if iters % 50 == 1:
+        #    print "split depth", iters
         for i1, (l1, l2) in enumerate(zip(segments, segments[1:])):
             if collinear(l1, l2, self.angle_error, self.distance_error):
                 new_segment = merge_segments(l1,l2)
                 new_segments = segments[:i1] + [new_segment] + segments[i1+2:] # preserve order
                 r = self.merge(new_segments, iters+1)
-                if iters == 0:
-                    print "FINISHED MERGE", len(r)
+                #if iters == 0:
+                #    print "FINISHED MERGE", len(r)
                 return r
-        if iters == 0:
-            print "FINISHED MERGE WITH NO STEPS", segments
+        #if iters == 0:
+        #    print "FINISHED MERGE WITH NO STEPS", segments
         return segments
 

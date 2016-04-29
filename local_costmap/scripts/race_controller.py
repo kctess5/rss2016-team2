@@ -9,7 +9,7 @@ from sensor_msgs.msg import LaserScan
 from rospy.numpy_msg import numpy_msg
 
 # code from other files in this repo
-import navigator
+import navigator2 as navigator
 from visualization_driver import VisualizationDriver
 from helpers import param, euclidean_distance, FrameBuffer, polar_to_euclid
 from helpers import State, AccelerationState, Path, StateRange, SearchNode, TreeNode, Point
