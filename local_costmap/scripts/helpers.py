@@ -167,9 +167,8 @@ def collinear(s1, s2, angle_error, distance_error):
     """ True iff the Lines of each Segment differ by less than the error Line """
     if angdiff(segment_angle(s1), segment_angle(s2)) > angle_error:
         return False
-    points = (s1.p1, s1.p2, s2.p1, s2.p2)
-    for p1 in points:
-        for p2 in points:
+    for p1 in s1:
+        for p2 in s2:
             if p1 != p2 and euclidean_distance(p1, p2) < distance_error:
                 return True
     return False

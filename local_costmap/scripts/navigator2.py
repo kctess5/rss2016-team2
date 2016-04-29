@@ -11,6 +11,7 @@ import numpy as np
 from helpers import *
 import warnings
 from profilehooks import profile
+import threading
 
 class Navigator(object):
 
@@ -190,6 +191,7 @@ class Navigator(object):
         walls.scale.x = .1
         return walls
 
+SM_LOCK = threading.Lock()
 
 class SplitMerge(object):
     """ Split-and-Merge algorithm """
@@ -209,11 +211,13 @@ class SplitMerge(object):
         Returns a list of Walls
         """
         #return self.merge(self.split(points[::5]))
-        all_split = []
-        for spoints in self.presplit(points[::self.downsample]):
-            all_split.extend(self.split(spoints))
-            #all_split.append(points_to_segment(spoints))
-        return self.merge(all_split)
+        with SM_LOCK:
+            all_split = []
+            for spoints in self.presplit(points[::self.downsample]):
+                all_split.extend(self.split(spoints))
+                #all_split.append(points_to_segment(spoints))
+            #return all_split
+            return self.merge(all_split)
 
     def presplit(self, points):
         """
@@ -221,6 +225,7 @@ class SplitMerge(object):
         Output: list of list of Point2Ds
         """
         splits = [-1]
+        #print self.discontinuity_threshold_2
         for i, (p1, p2) in enumerate(zip(points, points[1:])):
             if distance2(p1, p2) > self.discontinuity_threshold_2:
                 splits.append(i)
