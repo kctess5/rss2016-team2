@@ -77,10 +77,13 @@ def polar_to_point(distance, angle):
     x,y = polar_to_euclid(angle, distance)
     return Point2D(x,y)
 
-def euclidean_distance(p1, p2):
+def distance2(p1, p2):
     dx = p1.x - p2.x
     dy = p1.y - p2.y
-    return math.sqrt(dx*dx+dy*dy)
+    return dx*dx+dy*dy
+
+def euclidean_distance(p1, p2):
+    return math.sqrt(distance2(p1, p2))
 
 def length(segment):
     return euclidean_distance(segment.p1, segment.p2)
@@ -132,11 +135,24 @@ def merge_segments(s1, s2):
     """ Create a single Segment from these 2 Segments. Assumes they're IN ORDER """
     return points_to_segment([s1.p1, s1.p2, s2.p1, s2.p2])
 
-def collinear(s1, s2, error):
+def angdiff(a,b):
+    """Smallest difference between two angles."""
+    return abs(math.atan2(math.sin(a-b), math.cos(a-b)))
+
+def segment_angle(s):
+    """Get the angle between two points."""
+    return math.atan2(s.p2.y - s.p1.y, s.p2.x - s.p1.y)
+
+def collinear(s1, s2, angle_error, distance_error):
     """ True iff the Lines of each Segment differ by less than the error Line """
-    l1 = segment_to_line(s1)
-    l2 = segment_to_line(s2)
-    return abs(l2.m - l1.m) < error.m and abs(l2.b - l1.b) < error.b
+    if angdiff(segment_angle(s1), segment_angle(s2)) > angle_error:
+        return False
+    points = (s1.p1, s1.p2, s2.p1, s2.p2)
+    for p1 in points:
+        for p2 in points:
+            if p1 != p2 and euclidean_distance(p1, p2) < distance_error:
+                return True
+    return False
 
 class FrameBuffer:
     # bins/meter, (meters), (meters)

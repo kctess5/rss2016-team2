@@ -10,6 +10,7 @@ import tf.transformations
 import numpy as np
 from helpers import *
 import warnings
+from profilehooks import profile
 
 class Navigator(object):
 
@@ -35,7 +36,7 @@ class Navigator(object):
         # (this might be only needed for the simulator)
         #ranges[ranges + 0.1 > laser_data.range_max] = INF
         angles = (np.arange(ranges.shape[0]) * laser_data.angle_increment) + laser_data.angle_min
-        include_indices = np.where((angles > -math.pi/2.) & (angles < math.pi/2.))
+        include_indices = np.where(ranges + 0.1 < laser_data.range_max)
         ranges = ranges[include_indices]
         angles = angles[include_indices]
         self.find_walls(ranges, angles)
@@ -132,16 +133,41 @@ class SplitMerge(object):
         self.collinear_error = Line(
                 param("navigator.same_wall_error_m"),
                 param("navigator.same_wall_error_b"))
-        self.point_in_segment_error = 5
+        self.discontinuity_threshold_2 = .5#param("navigator.min_corridor_width")
+
+        self.angle_error = 0.1
+        self.distance_error = 0.4
+        self.point_in_segment_error = .4
         warnings.simplefilter('ignore', np.RankWarning)
 
+    #@profile(sort='tottime')
     def run(self, points):
         """ Main entry point to the algorithm.
         points is a list of Point2Ds
         Returns a list of Walls
         """
-        #return self.merge(self.split(points))
-        return self.split(points)
+        #return self.merge(self.split(points[::5]))
+        all_split = []
+        for spoints in self.presplit(points[::5]):
+            all_split.extend(self.split(spoints))
+            #all_split.append(points_to_segment(spoints))
+        return self.merge(all_split)
+
+    def presplit(self, points):
+        """
+        Input: orderd list of Point2Ds
+        Output: list of list of Point2Ds
+        """
+        splits = [-1]
+        for i, (p1, p2) in enumerate(zip(points, points[1:])):
+            if distance2(p1, p2) > self.discontinuity_threshold_2:
+                splits.append(i)
+        splits.append(len(points)-1)
+        output = []
+        for i,j in zip(splits, splits[1:]):
+            output.append(points[i+1:j+1])
+        print len(output), "presplit segments"
+        return output
 
     def split(self, points, iters=0):
         """
@@ -164,9 +190,14 @@ class SplitMerge(object):
             print "split depth", iters
         #assert iters == 0
         if error(worst) > self.point_in_segment_error:
+            #print "splitting on point", worst
             r = self.split(left, iters+1) + self.split(right, iters+1)
             if iters == 0:
                 print "FINISHED SPLIT", len(r)
+                #print map(segment_angle, r)
+                #print angdiff(segment_angle(r[0]), segment_angle(r[1]))
+                #print collinear(r[0], r[1], self.angle_error, self.distance_error)
+                #print collinear(r[1], r[2], self.angle_error, self.distance_error)
             return r
         else:
             if iters == 0:
@@ -181,7 +212,7 @@ class SplitMerge(object):
         if iters % 50 == 1:
             print "split depth", iters
         for i1, (l1, l2) in enumerate(zip(segments, segments[1:])):
-            if collinear(l1, l2, self.collinear_error):
+            if collinear(l1, l2, self.angle_error, self.distance_error):
                 new_segment = merge_segments(l1,l2)
                 new_segments = segments[:i1] + [new_segment] + segments[i1+2:] # preserve order
                 r = self.merge(new_segments, iters+1)
