@@ -7,6 +7,7 @@ import numpy as np
 # message related imports
 from sensor_msgs.msg import LaserScan
 from rospy.numpy_msg import numpy_msg
+from std_msgs.msg import ColorRGBA
 
 # code from other files in this repo
 import navigator2 as navigator
@@ -942,6 +943,11 @@ class ChallengeController(ControlModule):
         self.current_path = None
         self.state_index = 0
 
+        # used for one off path tests
+        self.test_started = False
+        self.test_path = None
+        self.control_steps_per_plan_interval = int(math.ceil(float(param("execution_freq")) / float(param("planning_freq"))))
+
         # initialize peripheral algorithms
         self.resources = ObjectManager()
         self.viz = VisualizationDriver()
@@ -961,57 +967,52 @@ class ChallengeController(ControlModule):
         rospy.Timer(rospy.Duration(1.0 / float(param("execution_freq"))), self.execute_control)
         rospy.on_shutdown(lambda: self.on_shutdown())
 
-    def next_path_segment(self):
-        # return the next state in the currently executing path if possible
-        
-        # we have a valid path if there is an available path and it has not been completed
-        if self.current_path and self.state_index < len(self.current_path.states):
-            next_state = self.current_path.states[self.state_index]
-            self.state_index += 1
-            return next_state
-        else:
-            # we do not have a currently commited path, apply the last action with damping
-            ls = self.state_history[-1]
-            # TODO: propagate the state forward according to the dynamic model
-            return State(x=ls.x, y=ls.y, theta=ls.theta, \
-                speed=ls.speed, steering_angle=ls.steering_angle)
+    def test_control(self):
+        if not self.test_started:
+            self.test_started = True
+            start_state = State(x=0, y=0, theta=0, \
+                    steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+            start_accel_state = AccelerationState(control_states=[start_state], linear_accel=0, steering_velocity=0)
+            
 
-    def stop_path(self, steering_damping=1):
-        # continue the next path segment while stopping as fast as possible
-        ps = self.next_path_segment()
-        next_speed = max(0.0, self.state_history[-1].speed + DYNAMICS.max_decel)
-        next_steering = ps.steering_angle * float(param("emergency.stop_path_steering_damp_factor"))
+            self.path_planner.reset(start_state=start_accel_state)
+            
+            goal_state = param("planner.test.goal")
+            self.path_planner.goal_state = State(x=goal_state[0], y=goal_state[1], theta=goal_state[2], steering_angle=0, speed=0)
+            self.path_planner.search(time_limit=1.0)
 
-        # stop wiggling the wheels once the car is stopped
-        if next_speed == 0.0:
-            next_steering = 0.0
+            self.test_path = self.path_planner.best()
 
-        # TODO: propagate the state forward according to the dynamic model
-        next_state = State(x=ps.x, y=ps.y, theta=ps.theta, speed=next_speed, steering_angle=next_steering)
-        self.execute_state(next_state)
+            # begin executing the new path. if no path is found, the path will be set to 
+            # none, and the emergency planner can take over
+            self.commit_path(self.test_path) 
 
-    def continue_path(self):
-        # continue the next path segment as planned
-        self.execute_state(self.next_path_segment())
+            if self.test_path:
+                print("FOUND TEST PATH, committing.")
+                speeds = map(lambda x: round(x.speed,2), self.test_path.states)
+                print("speeds:", speeds)
 
-    def back_up(self):
-        next_state = State(x=0, y=0, theta=0, speed=param("planner.backup_speed"), steering_angle=0)
-        self.execute_state(next_state)
-
-    def stuck_control(self):
-        # what to do when the car is stuck according to the path planner
-        # for now, just stop as fast as possible while continuing path TODO: maybe do something a bit fancier
-        
-        if (self.state_history[-1].speed > 0):
-            self.stop_path()
-        else:
-            self.back_up()
+        if self.test_path:
+            # visualize paths if necessary
+            if self.viz.should_visualize("path_search.test_goal"):
+                self.viz.publish_test_goal(self.path_planner.goal_state, ColorRGBA(1,1,1,1))
+            if self.viz.should_visualize("path_search.best_path"):
+                self.viz.publish_best_path(self.test_path)
+            if self.viz.should_visualize("path_search.complete_paths"):
+                self.viz.publish_complete_path(self.path_planner.complete_paths())
+            if self.viz.should_visualize("path_search.viable_paths"):
+                self.viz.publish_viable_paths(self.path_planner.tree_root)
+                # self.viz.publish_viable_accel_paths(self.path_planner.tree_root)
 
     @profile(sort='tottime')
     def compute_control(self, event=None):
         if not self.obstacles.first_laser_recieved:
             print("Waiting for laser data...")
             return False
+
+        # if the test is set to occur, this should pass control to that function by returning
+        if param("planner.test.enabled"):
+            return self.test_control()
 
         start_state = State(x=0, y=0, theta=0, \
             # steering_angle=self.state_history[-1].steering_angle, speed=param("dynamics.max_speed"))
@@ -1029,49 +1030,23 @@ class ChallengeController(ControlModule):
                 self.viz.publish_exploration_circles(self.space_explorer.tree_root)
             if self.viz.should_visualize("space_explorer.path") and self.space_explorer.best():
                 self.viz.publish_path_circles(self.space_explorer.best())
-            
         else:
             self.path_planner.reset(start_state=start_accel_state)
-            self.path_planner.search(time_limit=0.8/float(param("planning_freq")))
+            self.path_planner.search(time_limit=0.5/float(param("planning_freq")))
 
             best_path = self.path_planner.best()
             if best_path:
                 speeds = map(lambda x: round(x.speed,2), best_path.states)
                 print(speeds)
 
-        
-
-            # if best_path and type(best_path.states[0]) == AccelerationState:
-            #     control_states = reduce(lambda x,y: x+y, map(lambda x: x.control_states, best_path.states))
-            #     best_path = Path(states=control_states)
-
-            # 
-            # start_state = State(x=0, y=0, theta=0, \
-            #     steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
-            # self.path_planner.reset(start_state=start_state)
-            # # search for a viable path, taking at most half the available computation time
-            # self.path_planner.search(time_limit=0.5/float(param("planning_freq")))
-            # # choose the best path
-            # profile = map(lambda x: (x.linear_accel, x.steering_velocity), self.path_planner.best().states)
-            # best_path = reduce(lambda x,y: x+y, map(lambda x: x.control_states, self.path_planner.best().states))
-            # print(best_path)
-            # print(profile)
-            # # best_path = reduce(lambda x,y: x+y, map(lambda x: x.control_states, self.path_planner.best()))
-            # print()
-            # for i in self.path_planner.best().states:
-            #     print(i)
-            # print(best_path[0])
-
             print("Computed control with " + str(self.path_planner.step_count) + " graph extensions")
 
         if best_path == None:
-            # perform default stuck control
+            # commit emergency plan
             self.stuck_control()
         else:
-            # print(max(map(lambda x: x.speed, best_path.states)))
-            self.commit_path(best_path) # begin executing the new path
-            # TODO: decouple path execution from path planning so they can run at different hz
-            # self.continue_path()
+             # begin executing the new path. if no path is found, the path will be set to 
+            self.commit_path(best_path) 
 
             # visualize paths if necessary
             if self.viz.should_visualize("path_search.best_path"):
@@ -1080,19 +1055,51 @@ class ChallengeController(ControlModule):
                 self.viz.publish_complete_path(self.path_planner.complete_paths())
             if self.viz.should_visualize("path_search.viable_paths"):
                 self.viz.publish_viable_paths(self.path_planner.tree_root)
-                # self.viz.publish_viable_accel_paths(self.path_planner.tree_root)
 
     def execute_control(self, event=None):
-        self.continue_path()
+        if self.current_path and self.state_index < len(self.current_path.states):
+            next_state = self.current_path.states[self.state_index]
+            self.state_index += 1
+            self.execute_state(next_state)
+        else:
+            # no path is available, so queue the stop path
+            self.commit_path(self.make_stop_path())
+            # start the stopping procedure
+            self.execute_control()
 
     def commit_path(self, path):
         self.current_path = path
         self.state_index = 0
 
-    # callback for when the car is disabled
-    def disabled(self):
-        print("disabled clkbk")
-        self.state_history.append(State(x=0, y=0, theta=0, steering_angle=0, speed=0))
+    def make_stop_path(self, steering_angle=0):
+        last_speed = self.state_history[-1].speed
+        next_steering = steering_angle
+        stop_path = []
+        for i in xrange(self.control_steps_per_plan_interval):
+            next_speed = max(0.0, last_speed + DYNAMICS.max_decel)
+            # stop wiggling the wheels once the car is stopped
+            if next_speed == 0.0:
+                next_steering = 0.0
+            # TODO: propagate the states forward according to the dynamic model
+            stop_path.append(State(x=0, y=0, theta=0, speed=next_speed, steering_angle=next_steering))
+            last_speed = next_speed
+        return Path(states=stop_path)
+
+    def make_back_up_path(self):
+        """ Computes a path which backs the robot up for one planner timestep
+        """
+        # TODO need to propagate the positions in time
+        # TODO pick the backup path more smartly if necessary
+        backup_path = [State(x=0, y=0, theta=0, speed=param("planner.backup_speed"), steering_angle=0)] * self.control_steps_per_plan_interval
+        return Path(states=backup_path)
+
+    def stuck_control(self):
+        # what to do when the car is stuck according to the path planner
+        # should modify the path
+        if (self.state_history[-1].speed > 0):
+            self.commit_path(self.make_stop_path(steering_angle=self.state_history[-1].steering_angle))
+        else:
+            self.commit_path(self.make_back_up_path())
 
     def execute_state(self, state):
         if not self.is_enabled():
@@ -1100,7 +1107,7 @@ class ChallengeController(ControlModule):
 
         # apply the given path to the car, continue it until told otherwise
         self.state_history.append(state)
-        # print(state.speed)
+        print(state.speed)
 
         # send the message to the car
         # TODO: maybe an asynchronous state commit system will be more flexible
@@ -1113,6 +1120,11 @@ class ChallengeController(ControlModule):
             self.viz.publish("path_search.speed", state.speed)
         if self.viz.should_visualize("path_search.speed"):
             self.viz.publish("path_search.speed", state.speed)
+
+    # callback for when the car is disabled
+    def disabled(self):
+        print("disabled clkbk")
+        self.state_history.append(State(x=0, y=0, theta=0, steering_angle=0, speed=0))
 
     def on_shutdown(self):
         """Stop the car."""

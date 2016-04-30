@@ -14,8 +14,12 @@ memo_table = {}
 Point2D = collections.namedtuple("Point2D", ["x", "y"])
 Segment = collections.namedtuple("Segment", ["p1", "p2"])
 Line = collections.namedtuple("Line", ["m", "b"]) # y = mx + b
-State = collections.namedtuple("State", ["x", "y", "theta", "steering_angle", "speed"])
-AccelerationState = collections.namedtuple("AccelerationState", ["control_states", "steering_velocity", "linear_accel"])
+State = collections.namedtuple("State", 
+    ["x", "y", "theta", "steering_angle", "speed"])
+AccelerationState = collections.namedtuple("AccelerationState", 
+    ["control_states", "steering_velocity", "linear_accel"])
+DynamicAccelerationState = collections.namedtuple("DynamicAccelerationState", 
+    ["control_states", "steering_velocity", "linear_accel", "step_size", "integration_steps"])
 CircleState = collections.namedtuple("CircleState", ["radius", "x", "y"])
 
 

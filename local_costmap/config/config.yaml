@@ -68,6 +68,12 @@ viz:
         level: 1
         rate_limit: 10
         type: "float"
+      test_goal:
+        level: 1
+        # given in published messages/second
+        rate_limit: 2
+        type: "pose"
+        color: [0,1,1,1]
     space_explorer:
       explored:
         level: 1
@@ -162,6 +168,12 @@ planner:
   # more like bfs. 1 is theortically optimal?
   heuristic_bias: 1.8
 
+  # this provides an override to plan a path to a specified point
+  # and execute from start to end
+  test:
+    enabled: true
+    goal: [6,2,1.6]
+
 # ------------------ #
 # Emergency Parameters
 # ------------------ #
@@ -171,5 +183,7 @@ emergency:
   # breaks as fast as possible while following the old path. This damp factor is applied to
   # steering to potentially smooth the path as the car stops. Set to 1 to follow original path
   stop_path_steering_damp_factor: 1.0
+
+  # backu
 
 ...

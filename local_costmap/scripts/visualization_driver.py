@@ -4,9 +4,10 @@ import rospy
 import time
 from std_msgs.msg import Header, ColorRGBA, Float32
 from visualization_msgs.msg import Marker, MarkerArray
-from geometry_msgs.msg import Point, Pose, Vector3
+from geometry_msgs.msg import Point, Pose, Vector3, Quaternion
 import math
 from helpers import param, State, AccelerationState, Path, StateRange, SearchNode, TreeNode
+import tf.transformations
 
 class VisualizationDriver(object):
     """ The class responsible for visualizing the cars algorithms"""
@@ -23,6 +24,7 @@ class VisualizationDriver(object):
         self.add_publisher("path_search.viable_paths", MarkerArray)
         self.add_publisher("path_search.speed", Float32)
         self.add_publisher("path_search.steering", Float32)
+        self.add_publisher("path_search.test_goal", Marker)
 
         self.add_publisher("goals.next_goal", Marker)
         self.add_publisher("goals.walls", Marker)
@@ -142,6 +144,30 @@ class VisualizationDriver(object):
         marker.scale = Vector3(circle.radius*2.0, circle.radius*2.0, 0)
 
         return marker
+
+    def marker_from_state(self, state, color=ColorRGBA(1, 0, 0, 1)):
+        """ pose is (Point2D(x,y),heading) """
+        marker = Marker()
+        marker.header = Header(
+                stamp=rospy.Time.now(),
+                frame_id="hokuyo_link")
+        marker.ns = "navigator"
+        marker.id = 0
+        marker.action = 0
+        marker.lifetime = rospy.Duration.from_sec(10.)
+        marker.points = []
+        marker.type = Marker.ARROW
+        marker.color = color
+        marker.pose = Pose()
+        marker.pose.position.z = 0.
+        marker.pose.position.x = state.x
+        marker.pose.position.y = state.y
+        marker.pose.orientation = Quaternion(*tf.transformations.quaternion_from_euler(0,0,state.theta))
+        marker.scale = Vector3(.5, .1, .1)
+        return marker
+
+    def publish_test_goal(self, goal, color):
+        self.publish("path_search.test_goal", self.marker_from_state(goal, color))
 
     # def publish_viable_accel_paths
     def publish_exploration_circles(self, circle_tree):
