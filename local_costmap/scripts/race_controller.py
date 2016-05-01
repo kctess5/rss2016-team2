@@ -304,19 +304,56 @@ DYNAMICS = DynamicModel()
 class ObjectManager(object):
     """ Manages all inbound ROS communications
             - this prevents unnecessary data flow
+            - prevents long computations from creating a backlog
+            - sends data to all callbacks at a maximum of 100Hz.
     """
     def __init__(self):
         print(param("runtime_specific.scan_topic"))
-        self.scan_subscriber = rospy.Subscriber(param("runtime_specific.scan_topic"), \
-            numpy_msg(LaserScan), self.scan_callback, queue_size=1)
+
+        self.lock = threading.Lock()
+
         self.scan_callbacks = []
 
+        # The latest scan data.
+        self.scan_last = None
+        # Whether scan_last is new and has not been used yet.
+        self.scan_unseen = False
+
+        self.scan_subscriber = rospy.Subscriber(param("runtime_specific.scan_topic"),
+                                                numpy_msg(LaserScan), self.scan_callback, queue_size=1)
+
+        # Consume in a thread so that it is killable.
+        thread = threading.Thread(target=lambda: self.consume_loop())
+        thread.daemon = True
+        thread.start()
+
     def scan_callback(self, data):
-        for cb in self.scan_callbacks:
-            cb(data)
+        with self.lock:
+            self.scan_last = data
+            self.scan_unseen = True
+
+    def consume_loop(self):
+        while True:
+            self.consume_callback()
+            time.sleep(0.01)
+
+    def consume_callback(self):
+        should_run = False
+        data_snapshot = None
+
+        with self.lock:
+            if self.scan_unseen:
+                should_run = True
+                data_snapshot = self.scan_last
+                self.scan_unseen = False
+
+        if should_run:
+            for cb in self.scan_callbacks:
+                cb(data_snapshot)
 
     def register_scan_callback(self, callback):
-        self.scan_callbacks.append(callback)
+        with self.lock:
+            self.scan_callbacks.append(callback)
 
 class ObstacleMap(object):
     """ Manages obstacle information from the scanner to provide admissibility information """

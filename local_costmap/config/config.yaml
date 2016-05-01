@@ -38,6 +38,11 @@ viz:
         rate_limit: 5
         type: "segment"
         color: [1,0,1,1]
+      imagined_wall:
+        level: 2
+        rate_limit: 5
+        type: "segment"
+        color: [0,1,1,1]
     obstacles:
       inadmissible:
         level: 3
