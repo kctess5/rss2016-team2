@@ -20,8 +20,8 @@ AccelerationState = collections.namedtuple("AccelerationState",
     ["control_states", "steering_velocity", "linear_accel"])
 DynamicAccelerationState = collections.namedtuple("DynamicAccelerationState", 
     ["control_states", "steering_velocity", "linear_accel", "step_size", "integration_steps"])
-CircleState = collections.namedtuple("CircleState", ["radius", "x", "y"])
-
+Circle = collections.namedtuple("Circle", ["radius", "x", "y"])
+CirclePathState = collections.namedtuple("CirclePathState", ["circle", "dist_goal"])
 
 Path  = collections.namedtuple("Path", ["states"])
 # min and max are both States, with values set to the min/max of each field

@@ -13,12 +13,13 @@ from std_msgs.msg import ColorRGBA
 import navigator2 as navigator
 from visualization_driver import VisualizationDriver
 from helpers import param, euclidean_distance, FrameBuffer, polar_to_euclid
-from helpers import State, AccelerationState, CircleState, Path, StateRange, SearchNode, TreeNode
+from helpers import State, AccelerationState, Circle, CirclePathState, Path, StateRange, SearchNode, TreeNode
 from helpers import Point2D as Point
 from pathlib import arc_step, ackerman_radius
 from car_controller.control_module import ControlModule
 import whinytimer
 from profilehooks import profile, timecall
+from heapq import nsmallest
 
 # from shapely.geometry import Point as GeoPoint
 # from shapely.ops import union
@@ -210,14 +211,13 @@ class DynamicModel(object):
         """ Gives an estimate for the final pose after assuming a given state after a given time. t=1 is time time of the next control timestep
         """
         effective_radius = self.estimate_effective_arc(state)
-        # print(state.steering_angle, state.speed, effective_radius)
             
         propagated = arc_step(effective_radius, t * state.speed / self.execution_freq,
             state.x, state.y, state.theta)
         return State(x=propagated[0], y=propagated[1], theta=propagated[2], \
             steering_angle=state.steering_angle, speed=state.speed)
 
-    def propagate_accel(self, start_state, linear_accel, steering_velocity):
+    def propagate_accel(self, start_state, linear_accel, steering_velocity, num_segments):
         # NOTE: this function returns a list that DOES NOT include the given start state as 
         # it is assumed to be the last state in the previous path segment
         # TODO: need to consider the state execution frequency
@@ -230,7 +230,7 @@ class DynamicModel(object):
 
         # [(x,y,theta,steering,speed),...]
 
-        for i in xrange(param("planner.control_decisions_per_segment")):
+        for i in xrange(num_segments):
             # bound the speed to [0, max_speed]
             next_speed = max(min(param("dynamics.max_speed"), ls.speed + linear_accel / self.execution_freq), 0)
             # bound the angle to [-max_deflection, max_deflection]
@@ -658,6 +658,7 @@ class AccelerationPlanner(HeuristicSearch):
     """ Implements path planning by considering constant acceleration path segments
     """
     def __init__(self, obstacles, goals):
+        self.circle_path = None
         # self.steering_options = [[-1.0,0.0,1.0], [-1.0, -0.5, -.15, -0.05, 0.0, 0.05, 0.15, 0.5, 1.0]]
         self.steering_options = [[-1.0,0.0, 1.0], [-0.4, -.15, -0.04, 0.0, 0.04, 0.15, 0.4]]
         # self.steering_options = [[], [-0.1, 0.0, 0.4]]
@@ -672,17 +673,13 @@ class AccelerationPlanner(HeuristicSearch):
 
         super(AccelerationPlanner, self).__init__()
 
-    def cost(self, accel_state):
-        # time is our optimization target, so the cost of any given segment is constant
-        # steering_bias
-        # 
-        # xp = [0, 2, 1000]
-        # fp = [1.3, 1, 0]
+    def reset(self, start_state, circle_path=None):
+        self.circle_path = circle_path
+        super(AccelerationPlanner, self).reset(start_state)
+        
 
-        # distance_bias = np.interp(self.obstacles.dist_at(accel_state.control_states[-1]), xp, fp)
-        # steering_bias = 1 + 0.2*abs(accel_state.control_states[-1].steering_angle) / param("dynamics.max_deflection")
-        # return steering_bias * distance_bias * param("planner.control_decisions_per_segment") / float(param("execution_freq")) 
-        return param("planner.control_decisions_per_segment") / float(param("execution_freq")) 
+    def cost(self, accel_state):
+        return len(accel_state.control_states) / float(param("execution_freq")) 
 
     # this big function is designed to check as few points as possible along the given path
     # it evaluates the distance function at the first point along the path, and then it steps
@@ -741,7 +738,7 @@ class AccelerationPlanner(HeuristicSearch):
 
         return param("planner.heuristic_bias")*dubins.path_length(q0, q1, turning_radius) / float(param("dynamics.max_speed"))
 
-    def heuristic(self, accel_state, goal_state):
+    def heuristic_old2(self, accel_state, goal_state):
         """Estimate the time it would take to get from state to goal_state.
         By taking a few dubins curves at different turning radii and returning the best time.
         """
@@ -756,15 +753,84 @@ class AccelerationPlanner(HeuristicSearch):
         time = DYNAMICS.dubins_time(q0, q1, turning_radii)
         return time*param("planner.heuristic_bias")
 
+    def heuristic_new(self, accel_state, goal_state):
+        """Estimate the time it would take to get from state to goal_state.
+        By taking a few dubins curves at different turning radii and returning the best time.
+        """
+
+        # if the final goal is nearby, we need to check every intermediate control state 
+        # to get a better heuristic estimate, in case the chosen path overshoots
+        # TODO might want to make the path terminate at the control state where the goal is reached
+        q1 = (goal_state.x, goal_state.y, goal_state.theta)
+
+        if euclidean_distance(accel_state.control_states[-1], goal_state) \
+            < euclidean_distance(accel_state.control_states[-1], accel_state.control_states[0]):
+            return param("planner.heuristic_bias")*min(map(lambda s: 
+                DYNAMICS.dubins_time((s.x, s.y, s.theta), q1, [param("dynamics.r_min")]), accel_state.control_states))
+        else:
+            # only check the end state
+            s = accel_state.control_states[-1]
+            q0 = (s.x, s.y, s.theta)
+            
+            # Take the min of several dubins curves.
+            # Turning radii to try.
+            # TODO parameterize this curvature range.
+            turning_radii = np.linspace(1.3,4.5, num=3)
+            return param("planner.heuristic_bias") * DYNAMICS.dubins_time(q0, q1, turning_radii)
+
+    def heuristic(self, accel_state, goal_state):
+        """Estimate the time it would take to get from state to goal_state.
+        By taking a few dubins curves at different turning radii and returning the best time.
+        """
+
+        if self.circle_path:
+            end_state = accel_state.control_states[-1]
+            c = self.associated_circle(end_state)
+            return param("planner.heuristic_bias") * ( euclidean_distance(c.circle, end_state) + c.dist_goal ) / param("dynamics.max_speed")
+        else:
+            return self.heuristic_new(accel_state, goal_state)
+
+        # if the final goal is nearby, we need to check every intermediate control state 
+        # to get a better heuristic estimate, in case the chosen path overshoots
+        # TODO might want to make the path terminate at the control state where the goal is reached
+        # q1 = (goal_state.x, goal_state.y, goal_state.theta)
+
+        # if euclidean_distance(accel_state.control_states[-1], goal_state) \
+        #     < euclidean_distance(accel_state.control_states[-1], accel_state.control_states[0]):
+
+        #     # TODO this part might be overly computational?
+        #     # TODO dubin's curves?
+        #     return min(map(lambda control_state: 
+        #         min(map(lambda x: x.dist_goal + euclidean_distance(x.circle, control_state), self.circle_path.states)),
+        #             accel_state.control_states))
+            
+        #     # min(self.circle_path.states, key=lambda x: x.dist_goal + euclidean_distance(x.circle, control_state))
+
+        #     # return param("planner.heuristic_bias")*min(map(lambda s: 
+        #     #     DYNAMICS.dubins_time((s.x, s.y, s.theta), q1, [param("dynamics.r_min")]), accel_state.control_states))
+        # else:
+        
+
+        # print(param("planner.heuristic_bias") * ( euclidean_distance(c.circle, end_state) + c.dist_goal ) / param("dynamics.max_speed"))
+
+        
+
     def goal(self):
         # return the next goal state
         return self.goals.next_goal()
 
     def goal_met(self, accel_state, goal_state):
-        return min(map(lambda x: euclidean_distance(x, goal_state), accel_state.control_states)) < float(param("planner.goal_distance_threshold"))
-        # return euclidean_distance(accel_state.control_states[-1], goal_state) < float(param("planner.goal_distance_threshold"))
+        # if the path length is large compared to the distance between the end and the goal
+        # we check intermediate path points, otherwise we only check the end effector
+        if euclidean_distance(accel_state.control_states[-1], goal_state) \
+            < euclidean_distance(accel_state.control_states[-1], accel_state.control_states[0]):
+            return min(map(lambda x: 
+                euclidean_distance(x, goal_state), accel_state.control_states)) < float(param("planner.goal_distance_threshold"))
+        else:
+            return euclidean_distance(accel_state.control_states[-1], goal_state) < float(param("planner.goal_distance_threshold"))
 
     def should_bail(self, state, goal_state):
+        # bail if the end effector is further from the robot than the goal
         return euclidean_distance(state.control_states[-1], Point(x=0, y=0)) > euclidean_distance(goal_state, Point(x=0, y=0))
 
     def max_speed_given_dist(self, dist):
@@ -775,26 +841,38 @@ class AccelerationPlanner(HeuristicSearch):
         # fp = [0.8, param("dynamics.max_speed"), param("dynamics.max_speed")]
         # return np.interp(dist, xp, fp)
 
+    def associated_circle(self, control_state):
+        closest = nsmallest(3, self.circle_path.states, key=lambda x: euclidean_distance(x.circle, control_state))
+        # return whichever circle associates with the given control_state for the heuristic
+        return min(closest, key=lambda x: x.dist_goal + euclidean_distance(x.circle, control_state))
+
+    def step_size(self, state):
+        if self.circle_path:
+            c = self.associated_circle(state)
+            return min(param("planner.alpha") * c.circle.radius, param("planner.beta") * c.dist_goal, param("planner.min_step"))
+        else:
+            return param("planner.min_step")
+
     def neighbors(self, accel_state):
-        # print("neighbors called on:", accel_state)
         start_state = accel_state.control_states[-1]
+        if start_state.speed == 0:
+            num_segments = int(param("planner.max_segments"))
+        else:
+            step_size = self.step_size(start_state)
+            num_segments = math.floor((step_size / abs(start_state.speed)) * float(param("execution_freq")))
+            num_segments = int(min(max(num_segments, 1),  param("planner.max_segments")))
+        # num_segments = param("planner.control_decisions_per_segment")
         # TODO: precompute these options, and use a set of better spaced options
         # linear accel options: max accel, max decel, unity
         accel_options = []
         decel_options = []
 
-        # if start_state.speed < param("epsilon"):
-        #     can_decel = False
-        #     # TODO: might want to consider a lower acceleration option for dealing with turning sharper while stuck
-        #     accel_options = [param("dynamics.max_linear_accel")] 
-        # else:
         # limit the max speed at any given point in space to avoid going too fast near obstacles
-        max_target_speed = self.max_speed_given_dist(self.obstacles.dist_at(accel_state.control_states[-1]))
+        max_target_speed = self.max_speed_given_dist(self.obstacles.dist_at(start_state))
         current_speed = accel_state.control_states[-1].speed
 
         # this is positive if the car is over speed
-        diff = current_speed - max_target_speed
-        accel_target = param("execution_freq")*(max_target_speed - current_speed)/param("planner.control_decisions_per_segment")
+        accel_target = param("execution_freq")*(max_target_speed - current_speed)/float(num_segments)
 
         if accel_target < param("dynamics.max_linear_decel"):
             # linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")] 
@@ -827,8 +905,8 @@ class AccelerationPlanner(HeuristicSearch):
 
         # map each control choice to an actual search state, complete with intermediate control states
         return map( lambda cc: \
-            AccelerationState(control_states=DYNAMICS.propagate_accel(start_state, cc[0], cc[1]), steering_velocity=cc[1], linear_accel=cc[0]), \
-                candidate_controls)
+            AccelerationState(control_states=DYNAMICS.propagate_accel(start_state, cc[0], cc[1], num_segments), 
+                steering_velocity=cc[1], linear_accel=cc[0]), candidate_controls)
 
 class SpaceExploration(HeuristicSearch):
     """ This class implements lower dimensional search to provide a high quality
@@ -854,7 +932,7 @@ class SpaceExploration(HeuristicSearch):
 
     def reset(self, start_state):
         # Frontier is a priority queue.
-        start_state = CircleState(x=start_state.x, y=start_state.y, radius=self.circle_radius(start_state))
+        start_state = Circle(x=start_state.x, y=start_state.y, radius=self.circle_radius(start_state))
         super(SpaceExploration, self).reset(start_state)
 
     def cost(self, state):
@@ -884,7 +962,7 @@ class SpaceExploration(HeuristicSearch):
         # if the goal is out of bounds it returns a very large value, fix that
         if r > 100:
             r = 1.0
-        return CircleState(x=g.x, y=g.y, radius=r)
+        return Circle(x=g.x, y=g.y, radius=r)
 
     def goal_met(self, state, goal_state):
         return self.overlap(state, goal_state, float(param("space_explorer.overlap_percentage_goal")))
@@ -924,7 +1002,7 @@ class SpaceExploration(HeuristicSearch):
         self.radii.fill(state.radius)
         xs, ys = polar_to_euclid(self.thetas, self.radii)
 
-        return map(lambda x: CircleState( \
+        return map(lambda x: Circle( \
             x=state.x+x[0], y=state.y+x[1], radius=self.circle_radius(Point(x=state.x+x[0], y=state.y+x[1]))),
                 zip(xs,ys))
 
@@ -1004,6 +1082,15 @@ class ChallengeController(ControlModule):
                 self.viz.publish_viable_paths(self.path_planner.tree_root)
                 # self.viz.publish_viable_accel_paths(self.path_planner.tree_root)
 
+    # compute dist_goal for each node in the the given circle path
+    def augment_circle_path(self, raw_path):
+        augmented_path = []
+        dist_goal = 0
+        for i in reversed(raw_path.states):
+            augmented_path.append(CirclePathState(circle=i, dist_goal=dist_goal))
+            dist_goal += i.radius
+        return Path(states=augmented_path[::-1])
+
     @profile(sort='tottime')
     def compute_control(self, event=None):
         if not self.obstacles.first_laser_recieved:
@@ -1022,14 +1109,31 @@ class ChallengeController(ControlModule):
         best_path = None
         if param("space_explorer.enabled"):
             self.space_explorer.reset(start_state=start_state)
-            t = self.space_explorer.search(time_limit=0.5/float(param("planning_freq")))
-            # print(t, self.space_explorer.step_count)
-            if not self.space_explorer.best():
-                print("NO PATH FOUND")
+            t = self.space_explorer.search(time_limit=0.4/float(param("planning_freq")))
+            circle_path = self.space_explorer.best()
+
             if self.viz.should_visualize("space_explorer.explored"):
                 self.viz.publish_exploration_circles(self.space_explorer.tree_root)
+
+            # if the circle path finder fails, it is unlikely that a valid path exists
+            # and the car should perform stuck control
+            if not circle_path:
+                print("NO PATH FOUND")
+                return self.stuck_control()
+
             if self.viz.should_visualize("space_explorer.path") and self.space_explorer.best():
-                self.viz.publish_path_circles(self.space_explorer.best())
+                self.viz.publish_path_circles(circle_path)
+
+            circle_path = self.augment_circle_path(circle_path)
+            self.path_planner.reset(start_state=start_accel_state, circle_path=circle_path)
+            self.path_planner.search(time_limit=0.5/float(param("planning_freq")))
+            
+            best_path = self.path_planner.best()
+
+            print("Computed control with "+ str(self.path_planner.step_count) + " kinodynamic extensions and " 
+                + str(self.space_explorer.step_count) + " circle extensions")
+
+            # return self.commit_path(self.make_stop_path(steering_angle=self.state_history[-1].steering_angle))
         else:
             self.path_planner.reset(start_state=start_accel_state)
             self.path_planner.search(time_limit=0.5/float(param("planning_freq")))
@@ -1107,7 +1211,7 @@ class ChallengeController(ControlModule):
 
         # apply the given path to the car, continue it until told otherwise
         self.state_history.append(state)
-        print(state.speed)
+        # print(state.speed)
 
         # send the message to the car
         # TODO: maybe an asynchronous state commit system will be more flexible
