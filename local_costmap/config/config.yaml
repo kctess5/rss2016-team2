@@ -93,8 +93,8 @@ viz:
 
 
 # wheel_base: 0.27
-planning_freq: 5
-execution_freq: 12
+planning_freq: 7
+execution_freq: 20
 
 runtime_specific:
   racecar:
@@ -181,6 +181,10 @@ planner:
   # used for step size generation
   alpha: 0.5 # multiplied by circle radius
   beta: 0.65 # multiplied by goal distance
+
+  # how frequently the framerate optimization should occur, in number
+  # of planner cycles
+  fps_optimization_iteration_count: 7
 
   # this provides an override to plan a path to a specified point
   # and execute from start to end

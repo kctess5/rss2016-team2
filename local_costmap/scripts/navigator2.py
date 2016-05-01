@@ -57,7 +57,7 @@ class Navigator(object):
                 # Angle is too steep to be a legit goal point. Try next corridor.
                 print "skipping heading", heading
                 continue
-            print "good heading", heading
+            # print "good heading", heading
             goalpoint = Point2D(centerpoint_x, centerpoint_y)
             if distance2(goalpoint, Point2D(0,0)) < 8:
                 # Goal point is too close to the car
