@@ -198,14 +198,14 @@ class FrameBuffer:
         self.x0 = abs(int(self.min_x * self.discretization))
         self.y0 = abs(int(self.min_y * self.discretization))
 
-    def world_to_ind(self, x, y):
-        """ Maybe incorrect now. """
-        if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
-            return (int(y * self.discretization) + self.y0, int(x * self.discretization) + self.x0)
-        return (None, None)
+    # def world_to_ind(self, x, y):
+    #     """ Maybe incorrect now. """
+    #     if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
+    #         return (int(y * self.discretization) + self.y0, int(x * self.discretization) + self.x0)
+    #     return (None, None)
 
-    def ind_to_world(self, x_ind, y_ind):
-        return 
+    # def ind_to_world(self, x_ind, y_ind):
+    #     return 
 
     def clear(self):
         width = (self.max_x - self.min_x) * self.discretization
