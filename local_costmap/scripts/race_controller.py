@@ -363,11 +363,12 @@ class ObstacleMap(object):
         self.first_laser_recieved = False
         # self.lock = threading.Lock() # used to serialize accesses to the main buffer
 
-    def filter_lasers(self, angles, ranges):
-        # remove the data on the edges, since they are noisy
-        l = round(angles.shape[0] / 10)
-        return (angles[l:-l], ranges[l:-l])
+    def filter_lasers(self, angles, ranges, laser_data):
+        # Include only data which is in bounds.
+        include_indices = np.where((ranges + 0.1 < laser_data.range_max))
+        return angles[include_indices], ranges[include_indices]
 
+    # @profile(sort="cumtime")
     def scan_callback(self, data):
         if not self.first_laser_recieved:
             print(("first laser received: "
@@ -378,15 +379,13 @@ class ObstacleMap(object):
             self.laser_angles = np.linspace(data.angle_min, data.angle_max, math.ceil(\
                 (data.angle_max - data.angle_min) / data.angle_increment))
         
-        laser_angles, laser_ranges  = self.filter_lasers(self.laser_angles, data.ranges)
+        laser_angles, laser_ranges  = self.filter_lasers(self.laser_angles, data.ranges, data)
         laser_x, laser_y =  polar_to_euclid(laser_angles, laser_ranges)
 
         # compute the distance transform from the laser scanner data
         # with self.lock:
         self.buffer.clear()
-        for x, y, r in zip(laser_x, laser_y, laser_ranges):
-            if r < data.range_max-0.1:
-                self.buffer.add_sample(x,y)
+        self.buffer.add_samples(laser_x, laser_y)
         self.buffer.dist_transform()
         
         self.first_laser_recieved = True
@@ -424,8 +423,10 @@ class ObstacleMap(object):
     # used to ensure/sanity check that each costmap is only used once, to avoid wasted compute
     def mark_clean(self):
         self.dirty = False
+
     def is_dirty(self):
         return self.dirty
+
     def mark_dirty(self):
         self.dirty = True
 
