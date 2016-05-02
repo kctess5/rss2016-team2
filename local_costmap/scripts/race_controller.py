@@ -504,6 +504,17 @@ class HeuristicSearch(object):
                 return
             self._step()
 
+    def search_nsteps(self, step_limit):
+        """Run a fixed number of steps.
+        Using search is preferable. This exists to make profiling easier.
+        """
+        # extend nodes until the step limit is reached
+        for _ in xrange(step_limit):
+            if len(self.frontier) == 0:
+                print("Search failed, bailing early")
+                return
+            self._step()
+
     def _step(self):
         """ Perform one iteration of heuristic search - extend a single node.
             Requires that self.frontier is not empty.
