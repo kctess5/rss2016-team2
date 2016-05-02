@@ -927,6 +927,7 @@ class ChallengeController(ControlModule):
         self.start_time = rospy.get_rostime().to_sec()
         self.search_time_limit = 1.0/float(param("planning_freq"))
         self.computing_control = False
+        self.since_scan_recieved = []
 
         # used for one off path tests
         self.test_started = False
@@ -1002,8 +1003,8 @@ class ChallengeController(ControlModule):
         # this function will decrease the search time limit if the planning is taking too long
         # otherwise it decrease 
         # place reasonable bounds on the time to prevent crazy results
-        max_time = 1.5/float(param("planning_freq"))
-        min_time = 0.5/float(param("planning_freq"))
+        max_time = 1.2/float(param("planning_freq"))
+        min_time = 0.4/float(param("planning_freq"))
 
         percentage_slower_than_goal = (float(param("planning_freq")) - self.planning_fps())/float(param("planning_freq")) 
         self.search_time_limit = np.clip(self.search_time_limit * (1.0 - percentage_slower_than_goal), min_time, max_time)
@@ -1019,59 +1020,36 @@ class ChallengeController(ControlModule):
         self.start_time = rospy.get_rostime().to_sec()
         self.control_count = 0
 
-    def get_state_at_time(self, time_delta):
-        # TODO consider the timestamp of the last state execution
-        # return origin if the car is not enabled
-        if not self.is_enabled():
-            return State(x=0, y=0, theta=0, steering_angle=0, speed=0)
+    def integrate_forward(self, time_delta):
+        # returns an estimate of where the car will be at the given time offset from now
+        # in the frame of the latest scan data
+        path_segments_executed = time_delta * float(param("execution_freq"))
+        num_executed = int(math.floor(path_segments_executed))
+        # the index of the control state that will be executed right before the desired
+        # time is the current state index + number of expected
+        leftover = path_segments_executed % 1.0
 
-        # return last state for very small time differences
-        if abs(time_delta) < param("epsilon"):
-            return self.state_history[-1]
-        
-        if time_delta < 0:
-            # use historical data to find where the car was in the past
-            path_segments_executed = -1.0 * time_delta * float(param("execution_freq"))
-            num_back = int(math.ceil(path_segments_executed))
-            history_index = -1*num_back
+        control_steps = map(lambda x: (x.steering_angle, x.speed), self.since_scan_recieved)
 
-            if abs(history_index) > len(self.state_history):
-                start_state = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
-            else:
-                leftover = 1.0 - (path_segments_executed % 1.0)
-                closest_state = self.state_history[history_index]
-                start_state = DYNAMICS.propagate(closest_state, leftover)
+        if self.current_path:
+            future = self.current_path.states[self.state_index:self.state_index + num_executed]
+            control_steps += map(lambda x: (x.steering_angle, x.speed), future)
+
+        ls = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
+        next_state = None
+        for i in control_steps:
+            next_state = State(x=ls.x, y=ls.y, theta=ls.theta, steering_angle=i[0], speed=i[1])
+            next_state = DYNAMICS.propagate(next_state)
+
+        if next_state:
+            return next_state
         else:
-            # use path data to predict where the car will be in the future
-
-            # returns an estimate of where the car will be at the given time offset from now
-            # begins immediately after the call to this function and commits the path 
-            # immediately thereafter
-            path_segments_executed = time_delta * float(param("execution_freq"))
-            num_executed = int(math.floor(path_segments_executed))
-            # the index of the control state that will be executed right before the desired
-            # time is the current state index + number of expected
-            path_index = self.state_index + num_executed - 1
-            leftover = path_segments_executed % 1.0
-
-            
-            if self.state_index + path_index > len(self.current_path.states):
-                print("THIS SHOULD NEVER HAPPEN. If you see this message, it means that the search start \
-                    state propagation is messed up and there will be suboptimal planning results")
-                start_state = State(x=0, y=0, theta=0, \
-                    steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
-            else:
-                closest_state = self.current_path.states[path_index]
-                # propagate the closest control state forward by the fractional time error from
-                # the desired time_delta
-                start_state = DYNAMICS.propagate(closest_state, leftover)
-
-        return start_state
-
+            return State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+        
     def scan_callback(self, data):
         # if the car is already thinking, just drop this scan
         if self.computing_control:
-            print("DROPPING SCAN DATA")
+            # print("DROPPING SCAN DATA")
             return
 
         thread = threading.Thread(target=lambda: self._scan_callback(data))
@@ -1087,6 +1065,7 @@ class ChallengeController(ControlModule):
         #   - compute path
 
         self.computing_control = True
+        self.since_scan_recieved = []
         self.obstacles.scan_callback(data)
         self.goals.scan_callback(data)
         self.compute_control()
@@ -1108,8 +1087,8 @@ class ChallengeController(ControlModule):
             self.test_control()
             return 
 
-        # start_state = self.get_state_at_time(self.search_time_limit)
-        start_state = State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+        start_state = self.integrate_forward(self.search_time_limit)
+
         # print(start_state)
         start_accel_state = AccelerationState(control_states=[start_state], linear_accel=0, steering_velocity=0)
 
@@ -1151,7 +1130,7 @@ class ChallengeController(ControlModule):
             #     speeds = map(lambda x: round(x.speed,2), best_path.states)
             #     print(speeds)
 
-            # print("Computed control with " + str(self.path_planner.step_count) + " graph extensions")
+            print("Computed control with " + str(self.path_planner.step_count) + " graph extensions")
 
         if best_path == None:
             # commit emergency plan
@@ -1234,7 +1213,7 @@ class ChallengeController(ControlModule):
 
         # apply the given path to the car, continue it until told otherwise
         self.state_history.append(state)
-        # print(state.speed)
+        self.since_scan_recieved.append(state)
 
         # send the message to the car
         control_msg = self.make_message("direct_drive")
