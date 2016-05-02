@@ -1148,6 +1148,7 @@ class ChallengeController(DirectControlModule):
 
             self.path_planner.reset(start_state=start_accel_state)
             self.path_planner.search(time_limit=self.search_time_limit)
+            # self.path_planner.search_nsteps(43)
 
             best_path = self.path_planner.best()
             # if best_path:
