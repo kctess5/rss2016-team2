@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import rospy
 from sensor_msgs.msg import Image
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Polygon
 import cv2
 import numpy
 from cv_bridge import CvBridge, CvBridgeError
@@ -30,6 +30,7 @@ B_x = .2874673
 C_x = 3.5e-16
 D_x = -.07852111
 
+inch2meter 		 = .0254
 HSV_lower_thresh = (90,40,6)
 HSV_upper_thresh = (130,255,255)
 MIN_AREA_THRESH  = 200.
@@ -38,8 +39,8 @@ MIN_AREA_THRESH  = 200.
 #col starts at 0 left of ZED frame, x is 0 in middle of frame
 #units are inches
 def pixel2world(row,col,width):
-	y = fourPL(A_y,B_y,C_y,D_y,row)
-	x = fourPL(A_x,B_x,C_x,D_x,row)*(col-width/2.0)
+	y = fourPL(A_y,B_y,C_y,D_y,row)*inch2meter
+	x = fourPL(A_x,B_x,C_x,D_x,row)*(col-width/2.0)*inch2meter
 	return (x,y)
 
 def fourPL(A,B,C,D,x):
@@ -61,8 +62,8 @@ def find_green(image):
 		px,py,area = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]), M["m00"])
 		if area >= MIN_AREA_THRESH:
 			x,y = pixel2world(py,px,width)
-			centroids.append((x,y,0.0))
-			pixels.append((px,py+height/2,0.0))
+			centroids.append([x,y,0.0])
+			pixels.append([px,py+height/2,0.0])
 	return centroids, pixels
 
 
@@ -71,8 +72,8 @@ class greenCam:
 		self.bridge = CvBridge()
 		self.img = None
 		self.sub = rospy.Subscriber('/camera/rgb/image_rect_color', Image, self.recv_image)
-		self.pub_points = rospy.Publisher('/waypoint_markers', Point) #TODO: make waypoint rostopic
-		self.pub_pixels = rospy.Publisher('/pixel_centroids', Point) #TODO: make pixel_centroids rostopic
+		self.pub_points = rospy.Publisher('/waypoint_markers', Polygon) #TODO: make waypoint rostopic
+		self.pub_pixels = rospy.Publisher('/pixel_centroids', Polygon) #TODO: make pixel_centroids rostopic
 
 	def recv_image(self, img):
 		try:
