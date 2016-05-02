@@ -3,6 +3,7 @@ from __future__ import print_function
 import rospy
 import threading, time, collections, heapq, itertools, math, sys, recordclass
 import numpy as np
+import os
 
 # message related imports
 from sensor_msgs.msg import LaserScan
@@ -1252,8 +1253,18 @@ class ChallengeController(DirectControlModule):
         """Stop the car."""
         self.direct_set(speed=0, steering_angle=0)
 
+def make_flamegraph(filter=None):
+    import flamegraph
+    perf_log_path = os.path.join(os.path.dirname(__file__), "../tmp/perf.log")
+    flamegraph.start_profile_thread(fd=open(perf_log_path, "w"),
+                                    filter=r"compute_control",
+                                    interval=0.001)
+
 if __name__ == '__main__':
     # print(dynamics("steering_prediction"))
+
+    # make_flamegraph(r"compute_control")
+
     try:
         ChallengeController()
     except rospy.ROSInterruptException:
