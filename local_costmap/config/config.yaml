@@ -67,8 +67,8 @@ viz:
 
 
 # wheel_base: 0.27
-planning_freq: 5
-execution_freq: 10
+planning_freq: 10
+execution_freq: 15
 
 runtime_specific:
   racecar:

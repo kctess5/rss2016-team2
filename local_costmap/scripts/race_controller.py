@@ -385,7 +385,7 @@ class ObstacleMap(object):
         return angles[include_indices], ranges[include_indices]
 
     # @profile(sort="cumtime")
-    def scan_callback(self, data, scan_state):
+    def scan_callback(self, data):
         if not self.first_laser_recieved:
             print(("first laser received: "
                     "angle_min: %f angle_max %f angle_incr: %f "
@@ -399,12 +399,9 @@ class ObstacleMap(object):
         laser_x, laser_y =  polar_to_euclid(laser_angles, laser_ranges)
 
         # compute the distance transform from the laser scanner data
-        with self.lock:
-            # fix the coordinate space to where the car was when the scans were collected
-            self.origin = scan_state
-            self.buffer.clear()
-            self.buffer.add_samples(laser_x, laser_y)
-            self.buffer.dist_transform()
+        self.buffer.clear()
+        self.buffer.add_samples(laser_x, laser_y)
+        self.buffer.dist_transform()
         
         self.first_laser_recieved = True
         self.mark_clean()
@@ -436,24 +433,7 @@ class ObstacleMap(object):
         return state_admissible
 
     def dist_at(self, state):
-        # find the position of the requested point in the frame of the obstacle map
-        # print()
-        # print("state"state)
-        # print(self.origin)
-        # TODO: should this be negative? I think so..
-        angle = -1.0*self.origin.theta
-
-        # translate
-        t_x = state.x - self.origin.x
-        t_y = state.y - self.origin.y
-
-        # rotate
-        r_x = t_x * np.cos(angle) - t_y * np.sin(angle)
-        r_y = t_y * np.cos(angle) + t_x * np.sin(angle)
-
-        # print(r_x, r_y)
-
-        return self.buffer.dist_at(r_x, r_y)
+        return self.buffer.dist_at(state.x, state.y)
 
     # used to ensure/sanity check that each costmap is only used once, to avoid wasted compute
     def mark_clean(self):
@@ -478,25 +458,10 @@ class GoalManager(object):
         """ Return the position of the next goal in local coordinates
                 - for now, this directly calls the corridor detector with no smoothing
         """
-
         gp = self.navigator.goalpoint()
+        return State(x=gp[0], y=gp[1], theta=gp[2], steering_angle=None, speed=None)
 
-        # fix the coordinate space
-        # TODO: should this be negative? I don't think so
-        angle = self.origin.theta
-
-        # rotate
-        r_x = gp[0] * np.cos(angle) - gp[1] * np.sin(angle)
-        r_y = gp[1] * np.cos(angle) + gp[0] * np.sin(angle)
-
-        # translate
-        t_x = r_x + self.origin.x
-        t_y = r_y + self.origin.y
-        
-        return State(x=t_x, y=t_y, theta=gp[2]+angle, steering_angle=None, speed=None)
-
-    def scan_callback(self, data, scan_state):
-        self.origin = scan_state
+    def scan_callback(self, data):
         self.navigator.laser_update(data)
         self.navigator.visualize()
 
@@ -960,6 +925,7 @@ class ChallengeController(ControlModule):
         self.control_count = 0
         self.start_time = rospy.get_rostime().to_sec()
         self.search_time_limit = 1.0/float(param("planning_freq"))
+        self.computing_control = False
 
         # used for one off path tests
         self.test_started = False
@@ -967,7 +933,6 @@ class ChallengeController(ControlModule):
         self.control_steps_per_plan_interval = int(math.ceil(float(param("execution_freq")) * self.search_time_limit))
 
         # initialize peripheral algorithms
-        self.resources = ObjectManager(self.get_state_at_time)
         self.viz = VisualizationDriver()
 
         self.goals = GoalManager(self.viz)
@@ -976,14 +941,13 @@ class ChallengeController(ControlModule):
             self.space_explorer = SpaceExploration(self.obstacles, self.goals)
         self.path_planner = AccelerationPlanner(self.obstacles, self.goals)
 
-        # hook up necessary data flow
-        self.resources.register_scan_callback(self.obstacles.scan_callback)
-        self.resources.register_scan_callback(self.goals.scan_callback)
+        self.scan_subscriber = rospy.Subscriber(param("runtime_specific.scan_topic"),
+            numpy_msg(LaserScan), self.scan_callback, queue_size=1)
 
         # whinytimer.WhinyTimer(rospy.Duration(1.0 / float(param("planning_freq"))), self.compute_control)
         # set the timer for a bit under the target because the search function will slow down as necessary
         # to hit the inteded speed limit
-        rospy.Timer(rospy.Duration(0.95 / float(param("planning_freq"))), self.compute_control)
+        # rospy.Timer(rospy.Duration(0.95 / float(param("planning_freq"))), self.compute_control)
         rospy.Timer(rospy.Duration(1.0 / float(param("execution_freq"))), self.execute_control)
         rospy.on_shutdown(lambda: self.on_shutdown())
 
@@ -1103,6 +1067,30 @@ class ChallengeController(ControlModule):
 
         return start_state
 
+    def scan_callback(self, data):
+        # if the car is already thinking, just drop this scan
+        if self.computing_control:
+            print("DROPPING SCAN DATA")
+            return
+
+        thread = threading.Thread(target=lambda: self._scan_callback(data))
+        thread.daemon = True
+        thread.start()
+    
+    @profile(sort='cumtime')
+    def _scan_callback(self, data):
+        # this is the primary entry point for our planning algorithm
+        #   - compute obstacle map
+        #   - compute navigation
+        #   - estimate path start point
+        #   - compute path
+
+        self.computing_control = True
+        self.obstacles.scan_callback(data)
+        self.goals.scan_callback(data)
+        self.compute_control()
+        self.computing_control = False
+
     # @profile(sort='tottime')
     def compute_control(self, event=None):
         if not self.obstacles.first_laser_recieved:
@@ -1114,16 +1102,13 @@ class ChallengeController(ControlModule):
             self.optimize_time_limit()
             self.reset_fps()
 
-        # acquire obstacle map lock
-        # self.obstacles.lock.acquire()
-
         # if the test is set to occur, this should pass control to that function by returning
         if param("planner.test.enabled"):
             self.test_control()
-            # self.obstacles.lock.release()
             return 
 
-        start_state = self.get_state_at_time(self.search_time_limit)
+        # start_state = self.get_state_at_time(self.search_time_limit)
+        start_state = State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
         # print(start_state)
         start_accel_state = AccelerationState(control_states=[start_state], linear_accel=0, steering_velocity=0)
 
@@ -1158,11 +1143,6 @@ class ChallengeController(ControlModule):
         else:
 
             self.path_planner.reset(start_state=start_accel_state)
-
-            print()
-            print(start_state)
-            print(self.path_planner.goal_state)
-
             self.path_planner.search(time_limit=self.search_time_limit)
 
             best_path = self.path_planner.best()
@@ -1171,9 +1151,6 @@ class ChallengeController(ControlModule):
             #     print(speeds)
 
             # print("Computed control with " + str(self.path_planner.step_count) + " graph extensions")
-
-        # release lock on the obstacle buffer
-        # self.obstacles.lock.release()
 
         if best_path == None:
             # commit emergency plan
