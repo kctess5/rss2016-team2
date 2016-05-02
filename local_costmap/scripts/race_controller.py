@@ -17,7 +17,7 @@ from helpers import State, AccelerationState, Circle, CirclePathState, Path, Sta
 from helpers import Point2D as Point
 from pathlib import arc_step, ackerman_radius
 from pathlib2 import arc_step_fast
-from car_controller.control_module import ControlModule
+from car_controller.direct_control_module import DirectControlModule
 import whinytimer
 from profilehooks import profile, timecall
 from heapq import nsmallest
@@ -692,7 +692,7 @@ class AccelerationPlanner(HeuristicSearch):
         time = DYNAMICS.dubins_time(q0, q1, turning_radii)
         return time*param("planner.heuristic_bias")
 
-    def heuristic_new(self, accel_state, goal_state):
+    def heuristic(self, accel_state, goal_state):
         """Estimate the time it would take to get from state to goal_state.
         By taking a few dubins curves at different turning radii and returning the best time.
         """
@@ -717,7 +717,7 @@ class AccelerationPlanner(HeuristicSearch):
             turning_radii = np.linspace(1.3,4.5, num=3)
             return param("planner.heuristic_bias") * DYNAMICS.dubins_time(q0, q1, turning_radii)
 
-    def heuristic(self, accel_state, goal_state):
+    def heuristic_circle(self, accel_state, goal_state):
         """Estimate the time it would take to get from state to goal_state.
         By taking a few dubins curves at different turning radii and returning the best time.
         """
@@ -912,10 +912,10 @@ class SpaceExploration(HeuristicSearch):
             return self.make_path(self.found_paths[0][1], True)
         return None
     
-class ChallengeController(ControlModule):
+class ChallengeController(DirectControlModule):
     """ Top level car control for the 6.141 Challenge"""
     def __init__(self):
-        super(ChallengeController, self).__init__("challenge_controller")
+        super(ChallengeController, self).__init__("challenge_controller", racecar_env=param("runtime_specific.racecar_env"))
 
         # initialize the control state management
         self.state_history = [State(x=0, y=0, theta=0, steering_angle=0, speed=0)]
@@ -924,7 +924,9 @@ class ChallengeController(ControlModule):
 
         # counter for tracking fps of control
         self.control_count = 0
+        self.exec_count = 0
         self.start_time = rospy.get_rostime().to_sec()
+        self.exec_start_time = rospy.get_rostime().to_sec()
         self.search_time_limit = 1.0/float(param("planning_freq"))
         self.computing_control = False
         self.since_scan_recieved = []
@@ -1016,9 +1018,16 @@ class ChallengeController(ControlModule):
     def planning_fps(self):
         return float(self.control_count) / (rospy.get_rostime().to_sec() - self.start_time)
 
-    def reset_fps(self):
-        self.start_time = rospy.get_rostime().to_sec()
-        self.control_count = 0
+    def execution_fps(self):
+        return float(self.exec_count) / (rospy.get_rostime().to_sec() - self.exec_start_time)
+
+    def reset_fps(self, which="planning"):
+        if which=="planning":
+            self.start_time = rospy.get_rostime().to_sec()
+            self.control_count = 0
+        elif which=="execution":
+            self.exec_start_time = rospy.get_rostime().to_sec()
+            self.exec_count = 0
 
     def integrate_forward(self, time_delta):
         # returns an estimate of where the car will be at the given time offset from now
@@ -1213,6 +1222,10 @@ class ChallengeController(ControlModule):
         if not self.is_enabled():
             return
 
+        if (self.exec_count + 1) % param("planner.fps_optimization_iteration_count") == 0:
+            print ("execution fps: ", self.execution_fps())
+            self.reset_fps("execution")
+
         # apply the given path to the car, continue it until told otherwise
         self.state_history.append(state)
         self.since_scan_recieved.append(state)
@@ -1221,10 +1234,7 @@ class ChallengeController(ControlModule):
             print (state.steering_angle)
 
         # send the message to the car
-        control_msg = self.make_message("direct_drive")
-        control_msg.drive_msg.speed = state.speed
-        control_msg.drive_msg.steering_angle = state.steering_angle
-        self.control_pub.publish(control_msg)
+        self.direct_set(speed=state.speed, steering_angle=state.steering_angle)
 
         if self.viz.should_visualize("path_search.speed"):
             self.viz.publish("path_search.speed", state.speed)
@@ -1233,15 +1243,11 @@ class ChallengeController(ControlModule):
 
     # callback for when the car is disabled
     def disabled(self):
-        print("disabled clkbk")
         self.state_history.append(State(x=0, y=0, theta=0, steering_angle=0, speed=0))
 
     def on_shutdown(self):
         """Stop the car."""
-        control_msg = self.make_message("direct_drive")
-        control_msg.drive_msg.speed = 0
-        control_msg.drive_msg.steering_angle = 0
-        self.control_pub.publish(control_msg)
+        self.direct_set(speed=0, steering_angle=0)
 
 if __name__ == '__main__':
     # print(dynamics("steering_prediction"))

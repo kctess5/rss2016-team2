@@ -74,9 +74,11 @@ runtime_specific:
   racecar:
     scan_topic: "/scan"
     visualize_level: 1
+    racecar_env: True
   not_racecar:
     scan_topic: "/scan_throttle"
     visualize_level: 2
+    racecar_env: False
 
 # --------------------------- #
 # obstacle avoidance parameters
