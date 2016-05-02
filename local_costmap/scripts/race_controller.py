@@ -1025,21 +1025,25 @@ class ChallengeController(ControlModule):
         # in the frame of the latest scan data
         path_segments_executed = time_delta * float(param("execution_freq"))
         num_executed = int(math.floor(path_segments_executed))
+        # print(num_executed)
         # the index of the control state that will be executed right before the desired
         # time is the current state index + number of expected
         leftover = path_segments_executed % 1.0
 
         control_steps = map(lambda x: (x.steering_angle, x.speed), self.since_scan_recieved)
-
+        
         if self.current_path:
             future = self.current_path.states[self.state_index:self.state_index + num_executed]
             control_steps += map(lambda x: (x.steering_angle, x.speed), future)
+        else:
+            print("NO PATH")
 
         ls = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
         next_state = None
         for i in control_steps:
             next_state = State(x=ls.x, y=ls.y, theta=ls.theta, steering_angle=i[0], speed=i[1])
             next_state = DYNAMICS.propagate(next_state)
+            ls = next_state
 
         if next_state:
             return next_state
@@ -1088,8 +1092,6 @@ class ChallengeController(ControlModule):
             return 
 
         start_state = self.integrate_forward(self.search_time_limit)
-
-        # print(start_state)
         start_accel_state = AccelerationState(control_states=[start_state], linear_accel=0, steering_velocity=0)
 
         best_path = None
@@ -1214,6 +1216,9 @@ class ChallengeController(ControlModule):
         # apply the given path to the car, continue it until told otherwise
         self.state_history.append(state)
         self.since_scan_recieved.append(state)
+
+        if state.speed < 0:
+            print (state.steering_angle)
 
         # send the message to the car
         control_msg = self.make_message("direct_drive")
