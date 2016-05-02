@@ -109,14 +109,22 @@ navigator:
   min_wall_length: 0.3
 
   # Anything shorter is not a corridor
-  min_corridor_width: 0.5
+  min_corridor_width: 1.2
+
+  # Break on adjacent laser points at least this far from each other.
+  # (The presplit width)
+  min_discontinuity_width: 1.
 
   # This amount of error is acceptable to merge into 1 wall
   same_wall_error_angle: 0.17
-  same_wall_error_distance: 0.4
+  same_wall_error_distance: 1.2
 
   # Take every x laser points, for speed
-  downsample_every: 5
+  downsample_every: 2
+
+  # Whether to run the merge step. (0 or 1)
+  enable_merge: 1
+  enable_presplit: 1
 
 # --------------------- #
 # Path Planner Parameters

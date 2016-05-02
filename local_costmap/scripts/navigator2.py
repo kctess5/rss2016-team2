@@ -174,7 +174,7 @@ class Navigator(object):
         x = Marker()
         x.header = Header(
                 stamp=rospy.Time.now(),
-                frame_id="hokuyo_link")
+                frame_id="base_link")
         x.ns = "navigator"
         x.id = 0
         x.action = 0
@@ -211,12 +211,14 @@ class SplitMerge(object):
     """ Split-and-Merge algorithm """
     def __init__(self):
         # This is the *squared* discontinuity
-        self.discontinuity_threshold_2 = param("navigator.min_corridor_width")
+        self.discontinuity_threshold_2 = param("navigator.min_discontinuity_width") ** 2
         self.angle_error = param("navigator.same_wall_error_angle")
         self.distance_error = param("navigator.same_wall_error_distance")
         self.point_in_segment_error = self.distance_error
         warnings.simplefilter('ignore', np.RankWarning)
         self.downsample = param("navigator.downsample_every")
+        self.enable_merge = int(param("navigator.enable_merge"))
+        self.enable_presplit = int(param("navigator.enable_presplit"))
 
     #@profile(sort='tottime')
     def run(self, points):
@@ -230,14 +232,18 @@ class SplitMerge(object):
             for spoints in self.presplit(points[::self.downsample]):
                 all_split.extend(self.split(spoints))
                 #all_split.append(points_to_segment(spoints))
-            #return all_split
-            return self.merge(all_split)
+            if self.enable_merge:
+                return self.merge(all_split)
+            else:
+                return all_split
 
     def presplit(self, points):
         """
         Input: orderd list of Point2Ds
         Output: list of list of Point2Ds
         """
+        if not self.enable_presplit:
+            return [points]
         splits = [-1]
         #print self.discontinuity_threshold_2
         for i, (p1, p2) in enumerate(zip(points, points[1:])):
