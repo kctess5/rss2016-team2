@@ -68,11 +68,11 @@ viz:
 
 # wheel_base: 0.27
 planning_freq: 5
-execution_freq: 15
+execution_freq: 12
 
 runtime_specific:
   racecar:
-    scan_topic: "/scan"
+    scan_topic: "/scan_throttle"
     visualize_level: 1
     racecar_env: True
   not_racecar:
@@ -92,7 +92,7 @@ obstacle_map:
   ymin: -8
   ymax: 8
   # minimum distance to nearest obstacle to be considered admissible
-  min_distance: 0.3
+  min_distance: 0.35
   # number of cells worth of spacing between admissibility check waypoints
   # higher is faster, but might result in jumping over obstacles
   admissible_hop: 2.0
@@ -135,7 +135,7 @@ planner:
 
   # if there is now path, and the car is stopped, it will
   # start to back up in a straight line at this speed
-  backup_speed: -1.0
+  backup_speed: -0.8
 
   # number of control states per branch
   control_decisions_per_segment: 5
@@ -147,10 +147,10 @@ planner:
   # heuristic is biased (multiplied) by this value once computed
   # setting this high makes the search more like dfs, low is
   # more like bfs. 1 is theortically optimal?
-  heuristic_bias: 1.5
+  heuristic_bias: 1.7
 
   # don't perform search with segments less than this size
-  min_step: 1.1
+  min_step: 0.9
   # don't perform search with segments greater than this number of segments
   max_segments: 8
 

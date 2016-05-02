@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from __future__ import print_function
-import rospy
+import rospy, time
 from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
 from sensor_msgs.msg import Joy
 
@@ -24,7 +24,9 @@ class DirectControlModule(object):
 			self.enabled_state = True
 			self.coeff = -1.0
 
+		self.joy_sub = rospy.Subscriber("vesc/joy", Joy, self.joyCallback)
 		self.motor_cmd_pub = rospy.Publisher(topic, AckermannDriveStamped, queue_size=1)
+		self.last_toggle = time.clock()
 		
 
 	# called when this module is enabled
@@ -48,10 +50,15 @@ class DirectControlModule(object):
 
 	def joyCallback(self, joy_msg):
 		# toggle the the active state of the low level motor driver
-		if time.clock() - self.last_toggle > 0.02 and sum(joy_msg.buttons): # debounce controller buttons
+		# print(time.clock() - self.last_toggle)
+		if time.clock() - self.last_toggle > 0.5 and sum(joy_msg.buttons): # debounce controller buttons
 			if joy_msg.buttons[Y_BUTTON] == 1:
 				self.toggle_enabled()
-				rospy.loginfo("Toggling module, active:", self.is_enabled())
+				if self.is_enabled():
+					state="enabled"
+				else:
+					state="disabled"
+				rospy.loginfo("Toggling module, now:"+ state)
 
 			self.last_toggle = time.clock()
 

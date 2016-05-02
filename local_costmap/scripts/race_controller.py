@@ -915,6 +915,7 @@ class SpaceExploration(HeuristicSearch):
 class ChallengeController(DirectControlModule):
     """ Top level car control for the 6.141 Challenge"""
     def __init__(self):
+        print(param("runtime_specific.racecar_env"))
         super(ChallengeController, self).__init__("challenge_controller", racecar_env=param("runtime_specific.racecar_env"))
 
         # initialize the control state management
@@ -1230,8 +1231,8 @@ class ChallengeController(DirectControlModule):
         self.state_history.append(state)
         self.since_scan_recieved.append(state)
 
-        if state.speed < 0:
-            print (state.steering_angle)
+        # if state.speed < 0:
+        #     print (state.steering_angle)
 
         # send the message to the car
         self.direct_set(speed=state.speed, steering_angle=state.steering_angle)
@@ -1240,6 +1241,8 @@ class ChallengeController(DirectControlModule):
             self.viz.publish("path_search.speed", state.speed)
         if self.viz.should_visualize("path_search.speed"):
             self.viz.publish("path_search.speed", state.speed)
+
+        self.exec_count += 1
 
     # callback for when the car is disabled
     def disabled(self):
