@@ -8,24 +8,42 @@ from cv_bridge import CvBridge, CvBridgeError
 
 from __future__ import print_function
 
-C_y = 3.0 	# measured real world distance of calibration marker
-C_r = 135. 	# measured row where calibration marker was located
-C_w = .5	# measured real world width of calibration marker
-C_c = 100.	# measured pixel width corresponding to calibration marker
-C_a = 100.  # measured pixel area corresponding to calibration
+#given row, this 4pl returns y
+# A_y = 125.9304
+# B_y = 1.333925
+# C_y = 21.72133
+# D_y = 7.336942
+A_y = 323.9
+B_y = .4321479
+C_y = 2.967
+D_y = -46.14
 
 
-HSV_lower_thresh = (29,86,6)
-HSV_upper_thresh = (64,255,255)
+#given y, this 4PL returns how many pixels are in inch
+# A_x = 89.24841
+# B_x = 1.143443
+# C_x = 16.35531
+# D_x = -6.433097
+# given row, how many inches are per pixel
+A_x = 11450.0
+B_x = .2874673
+C_x = 3.5e-16
+D_x = -.07852111
+
+HSV_lower_thresh = (90,40,6)
+HSV_upper_thresh = (130,255,255)
 MIN_AREA_THRESH  = 200.
-area_error_thresh= .1
 
 #row starts at 0 in center of ZED frame and increments when going down in the frame
-#col starts at 0 in middle of ZED frame
-def pixel2world(row,col):
-	y = C_y*C_r/r
-	x = C_w*C_r*c/(C_c*r)
+#col starts at 0 left of ZED frame, x is 0 in middle of frame
+#units are inches
+def pixel2world(row,col,width):
+	y = fourPL(A_y,B_y,C_y,D_y,row)
+	x = fourPL(A_x,B_x,C_x,D_x,row)*(col-width/2.0)
 	return (x,y)
+
+def fourPL(A,B,C,D,x):
+	return ((A-D)/(1.0+((x/C)**B))) + D
 
 def find_green(image):
 	height,width = image.shape[:2]
@@ -36,16 +54,15 @@ def find_green(image):
 	mask = cv2.dilate(mask, None, iterations = 2)
 
 	centroids = []
-	countours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
+	pixels = []
+	contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
 	for c in contours:
 		M = cv2.moments(c)
-		px,py,area = (int(M["m10"] / M["m00"]) + width, int(M["m01"] / M["m00"]), M["m00"])
+		px,py,area = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]), M["m00"])
 		if area >= MIN_AREA_THRESH:
-			x,y = pixel2world(px,py)
-			expected_area = ((C_y/(float)y)**2.)*C_a
-			if (expected_area*(1.-area_error_thresh))<= area <=(expected_area*(1.+area_error_thresh)):
-				centroids.append((x,y,0.0))
-				pixels.append((px-width,py+height,0.0))
+			x,y = pixel2world(py,px,width)
+			centroids.append((x,y,0.0))
+			pixels.append((px,py+height/2,0.0))
 	return centroids, pixels
 
 

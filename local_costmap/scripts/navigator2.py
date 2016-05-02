@@ -62,8 +62,8 @@ class Navigator(object):
             if distance2(goalpoint, Point2D(0,0)) < 8:
                 # Goal point is too close to the car
                 # Move the goal point far away in the direction of its heading
-                x = goalpoint.x + math.cos(heading)*5
-                y = goalpoint.y + math.sin(heading)*5
+                x = goalpoint.x + math.cos(heading)*7
+                y = goalpoint.y + math.sin(heading)*7
                 return (Point2D(x,y), heading)
             return (goalpoint, heading)
         # No (suitable) corridors

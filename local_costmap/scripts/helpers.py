@@ -72,11 +72,9 @@ def param(raw_name):
     return param
 
 def polar_to_euclid(angles, ranges):
-    x = np.cos(angles)
-    y = np.sin(angles)
-    x = x * ranges
-    y = y * ranges
-    return (x,y)
+    xs = ranges * np.cos(angles)
+    ys = ranges * np.sin(angles)
+    return (xs, ys)
 
 def polar_to_point(distance, angle):
     """ returns Point2D(x,y) """
@@ -198,14 +196,14 @@ class FrameBuffer:
         self.x0 = abs(int(self.min_x * self.discretization))
         self.y0 = abs(int(self.min_y * self.discretization))
 
-    def world_to_ind(self, x, y):
-        """ Maybe incorrect now. """
-        if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
-            return (int(y * self.discretization) + self.y0, int(x * self.discretization) + self.x0)
-        return (None, None)
+    # def world_to_ind(self, x, y):
+    #     """ Maybe incorrect now. """
+    #     if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
+    #         return (int(y * self.discretization) + self.y0, int(x * self.discretization) + self.x0)
+    #     return (None, None)
 
-    def ind_to_world(self, x_ind, y_ind):
-        return 
+    # def ind_to_world(self, x_ind, y_ind):
+    #     return 
 
     def clear(self):
         width = (self.max_x - self.min_x) * self.discretization
@@ -213,12 +211,30 @@ class FrameBuffer:
 
         self.buffer = np.ones((width, height))
 
-    def add_sample(self, x, y):
-        if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
-            xind = int(x * self.discretization)
-            yind = int(y * self.discretization)
-            # add obstacle to the buffer
-            self.buffer[xind + self.x0][yind + self.y0] = False
+    # def add_sample(self, x, y):
+    #     if (self.min_x < x < self.max_x) and (self.min_y < y < self.max_y):
+    #         xind = int(x * self.discretization)
+    #         yind = int(y * self.discretization)
+    #         # add obstacle to the buffer
+    #         self.buffer[xind + self.x0][yind + self.y0] = False
+
+    def add_samples(self, xs, ys):
+        """Add many samples to the buffer."""
+        # Filter out out of bounds samples.
+        include_indices = np.where(
+            (xs > self.min_x) &
+            (xs < self.max_x) &
+            (ys > self.min_y) &
+            (ys < self.max_y))
+        xs = xs[include_indices]
+        ys = ys[include_indices]
+
+        # Translate into discretized index space.
+        xinds = (xs * self.discretization + self.x0).astype(int)
+        yinds = (ys * self.discretization + self.y0).astype(int)
+
+        # Add obstacle to the buffer.
+        self.buffer[(xinds, yinds)] = False
 
     def dist_transform(self):
         # Show a stripe to visualize coordinate system.

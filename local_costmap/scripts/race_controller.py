@@ -305,8 +305,9 @@ class ObjectManager(object):
             - this prevents unnecessary data flow
             - prevents long computations from creating a backlog
             - sends data to all callbacks at a maximum of 100Hz.
+            - computes and provides the state of the car when the data was collected
     """
-    def __init__(self):
+    def __init__(self, position_callback):
         print(param("runtime_specific.scan_topic"))
 
         self.lock = threading.Lock()
@@ -317,6 +318,10 @@ class ObjectManager(object):
         self.scan_last = None
         # Whether scan_last is new and has not been used yet.
         self.scan_unseen = False
+        self.scan_state = None
+
+        # provides the position of the car in the intrinsic path coordinate space
+        self.position_callback = position_callback
 
         self.scan_subscriber = rospy.Subscriber(param("runtime_specific.scan_topic"),
                                                 numpy_msg(LaserScan), self.scan_callback, queue_size=1)
@@ -330,6 +335,10 @@ class ObjectManager(object):
         with self.lock:
             self.scan_last = data
             self.scan_unseen = True
+            # self.scan_state = self.position_callback(data.header.stamp.to_sec()-rospy.get_rostime().to_sec())
+            print(data.header.stamp.to_sec()-rospy.get_rostime().to_sec())
+            self.scan_state = self.position_callback(data.header.stamp.to_sec()-rospy.get_rostime().to_sec())
+            # self.scan_state = self.position_callback(0)
 
     def consume_loop(self):
         while True:
@@ -337,18 +346,23 @@ class ObjectManager(object):
             time.sleep(0.01)
 
     def consume_callback(self):
+        # print()
         should_run = False
         data_snapshot = None
+        state_snapshot = None
 
         with self.lock:
             if self.scan_unseen:
                 should_run = True
                 data_snapshot = self.scan_last
                 self.scan_unseen = False
+                state_snapshot = self.scan_state
 
         if should_run:
             for cb in self.scan_callbacks:
-                cb(data_snapshot)
+                if not state_snapshot == self.scan_state:
+                    print("DIFFERENT")
+                cb(data_snapshot, state_snapshot)
 
     def register_scan_callback(self, callback):
         with self.lock:
@@ -362,13 +376,16 @@ class ObstacleMap(object):
             (param("obstacle_map.ymin"),param("obstacle_map.ymax")))
         self.first_laser_recieved = False
         self.lock = threading.Lock() # used to serialize accesses to the main buffer
+        # origin of the costmap in the coordinate space that the car operates in
+        self.origin = State(x=0,y=0,theta=0,steering_angle=0,speed=0)
 
-    def filter_lasers(self, angles, ranges):
-        # remove the data on the edges, since they are noisy
-        l = round(angles.shape[0] / 10)
-        return (angles[l:-l], ranges[l:-l])
+    def filter_lasers(self, angles, ranges, laser_data):
+        # Include only data which is in bounds.
+        include_indices = np.where((ranges + 0.1 < laser_data.range_max))
+        return angles[include_indices], ranges[include_indices]
 
-    def scan_callback(self, data):
+    # @profile(sort="cumtime")
+    def scan_callback(self, data, scan_state):
         if not self.first_laser_recieved:
             print(("first laser received: "
                     "angle_min: %f angle_max %f angle_incr: %f "
@@ -378,20 +395,16 @@ class ObstacleMap(object):
             self.laser_angles = np.linspace(data.angle_min, data.angle_max, math.ceil(\
                 (data.angle_max - data.angle_min) / data.angle_increment))
         
-        laser_angles, laser_ranges  = self.filter_lasers(self.laser_angles, data.ranges)
+        laser_angles, laser_ranges  = self.filter_lasers(self.laser_angles, data.ranges, data)
         laser_x, laser_y =  polar_to_euclid(laser_angles, laser_ranges)
 
         # compute the distance transform from the laser scanner data
         with self.lock:
-            # print()
-            # print()
-            # print(rospy.get_rostime().to_sec() - data.header.stamp.to_sec())
+            # fix the coordinate space to where the car was when the scans were collected
+            self.origin = scan_state
             self.buffer.clear()
-            for x, y, r in zip(laser_x, laser_y, laser_ranges):
-                if r < data.range_max-0.1:
-                    self.buffer.add_sample(x,y)
+            self.buffer.add_samples(laser_x, laser_y)
             self.buffer.dist_transform()
-            # print(rospy.get_rostime().to_sec() - data.header.stamp.to_sec())
         
         self.first_laser_recieved = True
         self.mark_clean()
@@ -423,13 +436,32 @@ class ObstacleMap(object):
         return state_admissible
 
     def dist_at(self, state):
-        return self.buffer.dist_at(state.x, state.y)
+        # find the position of the requested point in the frame of the obstacle map
+        # print()
+        # print("state"state)
+        # print(self.origin)
+        # TODO: should this be negative? I think so..
+        angle = -1.0*self.origin.theta
+
+        # translate
+        t_x = state.x - self.origin.x
+        t_y = state.y - self.origin.y
+
+        # rotate
+        r_x = t_x * np.cos(angle) - t_y * np.sin(angle)
+        r_y = t_y * np.cos(angle) + t_x * np.sin(angle)
+
+        # print(r_x, r_y)
+
+        return self.buffer.dist_at(r_x, r_y)
 
     # used to ensure/sanity check that each costmap is only used once, to avoid wasted compute
     def mark_clean(self):
         self.dirty = False
+
     def is_dirty(self):
         return self.dirty
+
     def mark_dirty(self):
         self.dirty = True
 
@@ -440,15 +472,31 @@ class GoalManager(object):
     """
     def __init__(self, viz):
         self.navigator = navigator.Navigator(viz)
+        self.origin = None
 
     def next_goal(self):
         """ Return the position of the next goal in local coordinates
                 - for now, this directly calls the corridor detector with no smoothing
         """
-        gp = self.navigator.goalpoint()
-        return State(x=gp[0], y=gp[1], theta=gp[2], steering_angle=None, speed=None)
 
-    def scan_callback(self, data):
+        gp = self.navigator.goalpoint()
+
+        # fix the coordinate space
+        # TODO: should this be negative? I don't think so
+        angle = self.origin.theta
+
+        # rotate
+        r_x = gp[0] * np.cos(angle) - gp[1] * np.sin(angle)
+        r_y = gp[1] * np.cos(angle) + gp[0] * np.sin(angle)
+
+        # translate
+        t_x = r_x + self.origin.x
+        t_y = r_y + self.origin.y
+        
+        return State(x=t_x, y=t_y, theta=gp[2]+angle, steering_angle=None, speed=None)
+
+    def scan_callback(self, data, scan_state):
+        self.origin = scan_state
         self.navigator.laser_update(data)
         self.navigator.visualize()
 
@@ -603,7 +651,6 @@ class AccelerationPlanner(HeuristicSearch):
         self.circle_path = circle_path
         super(AccelerationPlanner, self).reset(start_state)
         
-
     def cost(self, accel_state):
         return len(accel_state.control_states) / float(param("execution_freq")) 
 
@@ -833,8 +880,10 @@ class SpaceExploration(HeuristicSearch):
 
     def cost(self, state):
         return state.radius
+    
     def heuristic(self, state, goal_state):
         return (euclidean_distance(state,goal_state) - state.radius)*param("space_explorer.heuristic_bias")
+    
     def overlap(self, s1, s2, percentage=.15):
         # TODO/NOTE: this is a bit of a hack to go faster, percentage overlap not accurate
         if euclidean_distance(s1, s2) > (s1.radius + s2.radius)*(1.0-percentage):
@@ -918,7 +967,7 @@ class ChallengeController(ControlModule):
         self.control_steps_per_plan_interval = int(math.ceil(float(param("execution_freq")) * self.search_time_limit))
 
         # initialize peripheral algorithms
-        self.resources = ObjectManager()
+        self.resources = ObjectManager(self.get_state_at_time)
         self.viz = VisualizationDriver()
 
         self.goals = GoalManager(self.viz)
@@ -1006,28 +1055,51 @@ class ChallengeController(ControlModule):
         self.control_count = 0
 
     def get_state_at_time(self, time_delta):
-        # returns an estimate of where the car will be at the given time offset from now
-        # begins immediately after the call to this function and commits the path 
-        # immediately thereafter
-        path_segments_executed = time_delta * float(param("execution_freq"))
-        num_executed = int(math.floor(path_segments_executed))
-        # the index of the control state that will be executed right before the desired
-        # time is the current state index + number of expected
-        path_index = self.state_index + num_executed - 1
-        leftover = path_segments_executed % 1.0
-
+        # TODO consider the timestamp of the last state execution
+        # return origin if the car is not enabled
         if not self.is_enabled():
-            start_state = State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=0)
-        elif self.state_index + path_index > len(self.current_path.states):
-            print("THIS SHOULD NEVER HAPPEN. If you see this message, it means that the search start \
-                state propagation is messed up and there will be suboptimal planning results")
-            start_state = State(x=0, y=0, theta=0, \
-                steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+            return State(x=0, y=0, theta=0, steering_angle=0, speed=0)
+
+        # return last state for very small time differences
+        if abs(time_delta) < param("epsilon"):
+            return self.state_history[-1]
+        
+        if time_delta < 0:
+            # use historical data to find where the car was in the past
+            path_segments_executed = -1.0 * time_delta * float(param("execution_freq"))
+            num_back = int(math.ceil(path_segments_executed))
+            history_index = -1*num_back
+
+            if abs(history_index) > len(self.state_history):
+                start_state = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
+            else:
+                leftover = 1.0 - (path_segments_executed % 1.0)
+                closest_state = self.state_history[history_index]
+                start_state = DYNAMICS.propagate(closest_state, leftover)
         else:
-            closest_state = self.current_path.states[path_index]
-            # propagate the closest control state forward by the fractional time error from
-            # the desired time_delta
-            start_state = DYNAMICS.propagate(closest_state, leftover)
+            # use path data to predict where the car will be in the future
+
+            # returns an estimate of where the car will be at the given time offset from now
+            # begins immediately after the call to this function and commits the path 
+            # immediately thereafter
+            path_segments_executed = time_delta * float(param("execution_freq"))
+            num_executed = int(math.floor(path_segments_executed))
+            # the index of the control state that will be executed right before the desired
+            # time is the current state index + number of expected
+            path_index = self.state_index + num_executed - 1
+            leftover = path_segments_executed % 1.0
+
+            
+            if self.state_index + path_index > len(self.current_path.states):
+                print("THIS SHOULD NEVER HAPPEN. If you see this message, it means that the search start \
+                    state propagation is messed up and there will be suboptimal planning results")
+                start_state = State(x=0, y=0, theta=0, \
+                    steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+            else:
+                closest_state = self.current_path.states[path_index]
+                # propagate the closest control state forward by the fractional time error from
+                # the desired time_delta
+                start_state = DYNAMICS.propagate(closest_state, leftover)
 
         return start_state
 
@@ -1043,12 +1115,12 @@ class ChallengeController(ControlModule):
             self.reset_fps()
 
         # acquire obstacle map lock
-        self.obstacles.lock.acquire()
+        # self.obstacles.lock.acquire()
 
         # if the test is set to occur, this should pass control to that function by returning
         if param("planner.test.enabled"):
             self.test_control()
-            self.obstacles.lock.release()
+            # self.obstacles.lock.release()
             return 
 
         start_state = self.get_state_at_time(self.search_time_limit)
@@ -1069,7 +1141,7 @@ class ChallengeController(ControlModule):
             if not circle_path:
                 print("NO PATH FOUND")
                 self.stuck_control()
-                self.obstacles.lock.release()
+                # self.obstacles.lock.release()
                 return
 
             if self.viz.should_visualize("space_explorer.path") and self.space_explorer.best():
@@ -1084,7 +1156,13 @@ class ChallengeController(ControlModule):
             print("Computed control with "+ str(self.path_planner.step_count) + " kinodynamic extensions and " 
                 + str(self.space_explorer.step_count) + " circle extensions")
         else:
+
             self.path_planner.reset(start_state=start_accel_state)
+
+            print()
+            print(start_state)
+            print(self.path_planner.goal_state)
+
             self.path_planner.search(time_limit=self.search_time_limit)
 
             best_path = self.path_planner.best()
@@ -1095,7 +1173,7 @@ class ChallengeController(ControlModule):
             # print("Computed control with " + str(self.path_planner.step_count) + " graph extensions")
 
         # release lock on the obstacle buffer
-        self.obstacles.lock.release()
+        # self.obstacles.lock.release()
 
         if best_path == None:
             # commit emergency plan
@@ -1134,7 +1212,7 @@ class ChallengeController(ControlModule):
         next_steering = steering_angle
         stop_path = []
 
-        for i in xrange(self.control_steps_per_plan_interval+2):
+        for i in xrange(self.control_steps_per_plan_interval+10):
             next_speed = max(0.0, last_state.speed + DYNAMICS.max_decel)
             if next_speed == 0.0:
                 next_steering = 0.0
@@ -1151,7 +1229,7 @@ class ChallengeController(ControlModule):
 
         last_state = self.state_history[-1]
         backup_path = []
-        for i in xrange(self.control_steps_per_plan_interval+2):
+        for i in xrange(self.control_steps_per_plan_interval+10):
             next_state = State(x=last_state.x, y=last_state.y, theta=last_state.y, \
                 speed=param("planner.backup_speed"), steering_angle=0)
             next_state = DYNAMICS.propagate(next_state)

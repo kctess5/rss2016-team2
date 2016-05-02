@@ -1,7 +1,7 @@
 <launch>
 	<!-- Launches zed_wrapper, VGA resolution (1280x480) -->
-	<include file="$(find zed_wrapper)/launch/zed_depth.launch"
-	<arg name="resolution" value="3">
+	<include file="$(find zed_wrapper)/launch/zed.launch">
+	<!-- <arg name="resolution" value="3"/> -->
 	</include>
 
 	<!-- greenCam node -->

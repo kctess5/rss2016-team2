@@ -23,78 +23,52 @@ viz:
   topics:
     goals:
       next_goal: 
-        level: 1
         # given in published messages/second
         rate_limit: 5
-        type: "pose"
         color: [0,1,1,1]
       corridors:
-        level: 1
         rate_limit: 5
-        type: "segment"
         color: [0,1,0,1]
       walls:
-        level: 2
         rate_limit: 5
-        type: "segment"
         color: [1,0,1,1]
       imagined_wall:
-        level: 2
         rate_limit: 5
-        type: "segment"
         color: [0,1,1,1]
     obstacles:
       inadmissible:
-        level: 3
         rate_limit: 3
-        type: "omap"
         color: [0,0,0,1]
     path_search:
       best_path:
-        level: 1
-        rate_limit: 5
-        type: "path"
+        rate_limit: 1
         color: [0,0,0,1]
       viable_paths:
-        level: 2
-        rate_limit: 5
-        type: "path"
+        rate_limit: 1
         color: [0,0,0,1]
       complete_paths:
-        level: 2
         rate_limit: 5
-        type: "path"
         color: [0,0,0,1]
       speed:
-        level: 1
         rate_limit: 10
-        type: "float"
       steering:
-        level: 1
         rate_limit: 10
-        type: "float"
       test_goal:
-        level: 1
         # given in published messages/second
         rate_limit: 2
-        type: "pose"
         color: [0,1,1,1]
     space_explorer:
       explored:
-        level: 1
         rate_limit: 5
-        type: "circles"
         color: [0,0,0,1]
       path:
-        level: 1
         rate_limit: 5
-        type: "circles"
         color: [0,0,0,1]
 
 
 # wheel_base: 0.27
-planning_freq: 7
-execution_freq: 20
+planning_freq: 5
+execution_freq: 10
 
 runtime_specific:
   racecar:
