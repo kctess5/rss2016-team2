@@ -16,6 +16,7 @@ from helpers import param, euclidean_distance, FrameBuffer, polar_to_euclid
 from helpers import State, AccelerationState, Circle, CirclePathState, Path, StateRange, SearchNode, TreeNode
 from helpers import Point2D as Point
 from pathlib import arc_step, ackerman_radius
+from pathlib2 import arc_step_fast
 from car_controller.control_module import ControlModule
 import whinytimer
 from profilehooks import profile, timecall
@@ -212,7 +213,7 @@ class DynamicModel(object):
         """
         effective_radius = self.estimate_effective_arc(state)
             
-        propagated = arc_step(effective_radius, t * state.speed / self.execution_freq,
+        propagated = arc_step_fast(effective_radius, t * state.speed / self.execution_freq,
             state.x, state.y, state.theta)
         return State(x=propagated[0], y=propagated[1], theta=propagated[2], \
             steering_angle=state.steering_angle, speed=state.speed)

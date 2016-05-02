@@ -57,9 +57,12 @@ def arc_step(arc_radius, travel_distance, start_x, start_y, start_heading):
         startx, starty, startheading: Starting pose of the car.
     Returns: np array of [x, y, heading].
     """
+    raise RuntimeError("Please use arc_step_fast instead.")
+    # Step along the arc as if starting from the origin.
     x_o, y_o, heading_o = arc_step_origin(arc_radius, travel_distance)
-    # Rotate and then translate.
+    # Rotate.
     x_1, y_1 = rotate2d(x_o, y_o, start_heading)
+    # Translate.
     x, y, heading = x_1 + start_x, y_1 + start_y, heading_o + start_heading
     return np.array([x, y, heading])
 
