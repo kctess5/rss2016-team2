@@ -67,7 +67,7 @@ viz:
 
 
 # wheel_base: 0.27
-planning_freq: 10
+planning_freq: 7
 execution_freq: 15
 
 runtime_specific:
