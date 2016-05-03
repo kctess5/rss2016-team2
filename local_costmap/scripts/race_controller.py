@@ -22,6 +22,8 @@ from car_controller.direct_control_module import DirectControlModule
 import whinytimer
 from profilehooks import profile, timecall
 from heapq import nsmallest
+from whoami import is_racecar
+import matplotlib.pyplot as plt
 
 # from shapely.geometry import Point as GeoPoint
 # from shapely.ops import union
@@ -121,6 +123,28 @@ Citations:
         Rice University, Houston, TX, USA, Tech. Rep. TR00-367, Aug. 2000.
 
 """
+
+
+class DynamicPlot():
+    def initialize(self):
+        plt.ion()
+        #Set up plot
+        self.fig = plt.figure(figsize=plt.figaspect(2.))
+        
+        self.ax0 = self.fig.add_subplot(1,1,1)
+        self.ax1 = self.fig.add_subplot(1,2,2)
+
+        self.redraw()
+        
+    def redraw(self):
+        #We need to draw *and* flush
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+
+
+if not is_racecar() and param("obstacle_map.vizualize_distmap"):
+    LOCAL_VIZ = DynamicPlot()
+    LOCAL_VIZ.initialize()
 
 class DynamicModel(object):
     """ Encapsulates the dynamics of the car """
@@ -302,73 +326,9 @@ class DynamicModel(object):
 
 DYNAMICS = DynamicModel()
 
-class ObjectManager(object):
-    """ Manages all inbound ROS communications
-            - this prevents unnecessary data flow
-            - prevents long computations from creating a backlog
-            - sends data to all callbacks at a maximum of 100Hz.
-            - computes and provides the state of the car when the data was collected
-    """
-    def __init__(self, position_callback):
-        print(param("runtime_specific.scan_topic"))
-
-        self.lock = threading.Lock()
-
-        self.scan_callbacks = []
-
-        # The latest scan data.
-        self.scan_last = None
-        # Whether scan_last is new and has not been used yet.
-        self.scan_unseen = False
-        self.scan_state = None
-
-        # provides the position of the car in the intrinsic path coordinate space
-        self.position_callback = position_callback
-
-        self.scan_subscriber = rospy.Subscriber(param("runtime_specific.scan_topic"),
-                                                numpy_msg(LaserScan), self.scan_callback, queue_size=1)
-
-        # Consume in a thread so that it is killable.
-        thread = threading.Thread(target=lambda: self.consume_loop())
-        thread.daemon = True
-        thread.start()
-
-    def scan_callback(self, data):
-        with self.lock:
-            self.scan_last = data
-            self.scan_unseen = True
-            # self.scan_state = self.position_callback(data.header.stamp.to_sec()-rospy.get_rostime().to_sec())
-            print(data.header.stamp.to_sec()-rospy.get_rostime().to_sec())
-            self.scan_state = self.position_callback(data.header.stamp.to_sec()-rospy.get_rostime().to_sec())
-            # self.scan_state = self.position_callback(0)
-
-    def consume_loop(self):
-        while True:
-            self.consume_callback()
-            time.sleep(0.01)
-
-    def consume_callback(self):
-        # print()
-        should_run = False
-        data_snapshot = None
-        state_snapshot = None
-
-        with self.lock:
-            if self.scan_unseen:
-                should_run = True
-                data_snapshot = self.scan_last
-                self.scan_unseen = False
-                state_snapshot = self.scan_state
-
-        if should_run:
-            for cb in self.scan_callbacks:
-                if not state_snapshot == self.scan_state:
-                    print("DIFFERENT")
-                cb(data_snapshot, state_snapshot)
-
-    def register_scan_callback(self, callback):
-        with self.lock:
-            self.scan_callbacks.append(callback)
+# from skimage.morphology import medial_axis, skeletonize
+# from scipy.ndimage.filters import sobel, gaussian_filter
+# from skimage.feature import canny
 
 class ObstacleMap(object):
     """ Manages obstacle information from the scanner to provide admissibility information """
@@ -446,6 +406,22 @@ class ObstacleMap(object):
 
     def mark_dirty(self):
         self.dirty = True
+
+    def viz(self):
+        if not self.buffer.distmap == None:        
+            # dist = self.buffer.distmap
+            # skel = gaussian_filter(dist, sigma=1)
+            # skel = canny(skel)
+            # skel = sobel(self.buffer.buffer)
+
+            # dist /= (dist.max()/255.0)
+            # skel /= (skel.max()/255.0)
+
+            LOCAL_VIZ.ax0.imshow(self.buffer.distmap)
+            # LOCAL_VIZ.ax0.imshow(skel)
+            # LOCAL_VIZ.ax1.imshow(dist)
+            LOCAL_VIZ.redraw()
+        # self.viz.laser_euclid.set_data(self.expected_angles, self.expected_ranges)
 
 class GoalManager(object):
     """ Manages and tracks the car's concept of purpose in life
@@ -613,7 +589,8 @@ class AccelerationPlanner(HeuristicSearch):
     def __init__(self, obstacles, goals):
         self.circle_path = None
         # TODO parameterize this
-        self.steering_options = [[-1.0,0.0, 1.0], [-0.4, -.15, -0.04, 0.0, 0.04, 0.15, 0.4]]
+        # self.steering_options = [[-1.0,0.0, 1.0], [-0.4, -.15, -0.04, 0.0, 0.04, 0.15, 0.4]]
+        self.steering_options = [[-1.0,0.0, 1.0], [-1.0, -0.4, -.12, -0.04, 0.0, 0.04, 0.12, 0.4, 1.0]]
         self.steering_options = map(lambda l: map(lambda x: float(param("dynamics.max_angular_velocity"))*x, l), self.steering_options)
 
         self.obstacles = obstacles
@@ -748,7 +725,7 @@ class AccelerationPlanner(HeuristicSearch):
     def goal_met(self, accel_state, goal_state):
         # if the path length is large compared to the distance between the end and the goal
         # we check intermediate path points, otherwise we only check the end effector
-        if euclidean_distance(accel_state.control_states[-1], goal_state) \
+        if not param("planner.test.enabled") and euclidean_distance(accel_state.control_states[-1], goal_state) \
             < euclidean_distance(accel_state.control_states[-1], accel_state.control_states[0]):
             return min(map(lambda x: 
                 euclidean_distance(x, goal_state), accel_state.control_states)) < float(param("planner.goal_distance_threshold"))
@@ -968,14 +945,17 @@ class ChallengeController(DirectControlModule):
         rospy.Timer(rospy.Duration(1.0 / float(param("execution_freq"))), self.execute_control)
         rospy.on_shutdown(lambda: self.on_shutdown())
 
+        if param("obstacle_map.vizualize_distmap"):
+            while not rospy.is_shutdown():
+                self.loop()
+                rospy.sleep(0.4)
+
     def test_control(self):
         if not self.test_started:
             self.test_started = True
-            start_state = State(x=0, y=0, theta=0, \
-                    steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+            start_state = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
             start_accel_state = AccelerationState(control_states=[start_state], linear_accel=0, steering_velocity=0)
             
-
             self.path_planner.reset(start_state=start_accel_state)
             
             goal_state = param("planner.test.goal")
@@ -991,7 +971,10 @@ class ChallengeController(DirectControlModule):
             if self.test_path:
                 print("FOUND TEST PATH, committing.")
                 speeds = map(lambda x: round(x.speed,2), self.test_path.states)
+                angles = map(lambda x: round(x.steering_angle,2), self.test_path.states)
                 print("speeds:", speeds)
+                print("angles:", angles)
+                print(self.test_path.states[-1])
 
         if self.test_path:
             # visualize paths if necessary
@@ -1097,7 +1080,7 @@ class ChallengeController(DirectControlModule):
         self.compute_control()
         self.computing_control = False
 
-    # @profile(sort='tottime')
+    @profile(sort='tottime')
     def compute_control(self, event=None):
         if not self.obstacles.first_laser_recieved:
             print("Waiting for laser data...")
@@ -1175,11 +1158,15 @@ class ChallengeController(DirectControlModule):
             self.control_count += 1
 
     def execute_control(self, event=None):
+        if not self.is_enabled():
+            return
+
         if self.current_path and self.state_index < len(self.current_path.states):
             next_state = self.current_path.states[self.state_index]
             self.state_index += 1
             self.execute_state(next_state)
         else:
+            print("NO PATH")
             # no path is available, so queue the stop path
             self.commit_path(self.make_stop_path())
             # start the stopping procedure
@@ -1264,6 +1251,10 @@ class ChallengeController(DirectControlModule):
     def on_shutdown(self):
         """Stop the car."""
         self.direct_set(speed=0, steering_angle=0)
+
+    def loop(self):
+        # pass
+        self.obstacles.viz()
 
 def make_flamegraph(filter=None):
     import flamegraph

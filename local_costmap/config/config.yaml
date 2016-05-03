@@ -70,6 +70,7 @@ viz:
 planning_freq: 5
 execution_freq: 12
 
+
 runtime_specific:
   racecar:
     scan_topic: "/scan_throttle"
@@ -96,6 +97,8 @@ obstacle_map:
   # number of cells worth of spacing between admissibility check waypoints
   # higher is faster, but might result in jumping over obstacles
   admissible_hop: 2.0
+
+  vizualize_distmap: False
 
 # ----------------------- #
 # Navigator Parameters
