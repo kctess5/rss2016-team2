@@ -1,4 +1,0 @@
-<launch>
-	<!-- goal_point_manager node -->
-	<node name="goal_point_manager" pkg="goal_point_manager" type="goal_point_manager.py" />
-</launch>
