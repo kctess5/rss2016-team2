@@ -1,12 +1,12 @@
 #!/usr/bin/env python
+from __future__ import print_function
+
 import rospy
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point, Polygon
 import cv2
 import numpy
 from cv_bridge import CvBridge, CvBridgeError
-
-from __future__ import print_function
 
 #given row, this 4pl returns y
 # A_y = 125.9304
@@ -90,7 +90,7 @@ class greenCam:
 			#self.pub_points.publish(waypoint_markers)
 			self.pub_green_goal.publish(green_goal)
 		except CvBridgeError as e:
-    		print(e)
+    			print(e)
 
 
 if __name__ == '__main__':
