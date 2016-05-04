@@ -1,13 +1,14 @@
 #!/usr/bin/env python
+from __future__ import print_function
+
 import rospy
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point, Polygon
+from helpers import param
 import cv2
 import numpy
 from helpers import param
 from cv_bridge import CvBridge, CvBridgeError
-
-from __future__ import print_function
 
 #given row, this 4pl returns y
 # A_y = 125.9304
@@ -39,7 +40,7 @@ HSV_lower_thresh = tuple(param("greenCam.lower_thresh"))
 HSV_upper_thresh = tuple(param("greenCam.upper_thresh"))
 #HSV_upper_thresh = (130,255,255)
 #MIN_AREA_THRESH  = 200.
-MIN_AREA_THRESH = tuple(param("greenCam.min_area_thresh"))
+MIN_AREA_THRESH = param("greenCam.min_area_thresh")
 
 #row starts at 0 in center of ZED frame and increments when going down in the frame
 #col starts at 0 left of ZED frame, x is 0 in middle of frame
@@ -75,7 +76,7 @@ def find_green(image):
 			if y < closest_y:
 				closest_y = y
 				closest_centroid = [x,y,0.0]
-	return closest_centroid, centroids
+	return Point(*closest_centroid), centroids
 
 
 class greenCam:
@@ -85,6 +86,7 @@ class greenCam:
 		self.sub = rospy.Subscriber('/camera/rgb/image_rect_color', Image, self.recv_image)
 		#self.pub_points = rospy.Publisher('/waypoint_markers', Polygon)
 		self.pub_green_goal = rospy.Publisher('/closest_green_goal', Point)
+		rospy.init_node('greenCam')
 	def recv_image(self, img):
 		try:
 			cv_image = self.bridge.imgmsg_to_cv2(data, "rgb8")
@@ -92,7 +94,7 @@ class greenCam:
 			#self.pub_points.publish(waypoint_markers)
 			self.pub_green_goal.publish(green_goal)
 		except CvBridgeError as e:
-    		print(e)
+    			print(e)
 
 
 if __name__ == '__main__':
