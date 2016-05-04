@@ -4,6 +4,7 @@ from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point, Polygon
 import cv2
 import numpy
+from helpers import param
 from cv_bridge import CvBridge, CvBridgeError
 
 from __future__ import print_function
@@ -60,6 +61,7 @@ def find_green(image):
 	mask = cv2.dilate(mask, None, iterations = 2)
 
 	centroids = []
+	pixels = []
 	closest_y = float("inf")
 	closest_centroid = [0.0, 0.0, 0.0]
 	contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
