@@ -4,6 +4,7 @@ from __future__ import print_function
 import rospy
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Point, Polygon
+from helpers import param
 import cv2
 import numpy
 from cv_bridge import CvBridge, CvBridgeError
@@ -73,7 +74,7 @@ def find_green(image):
 			if y < closest_y:
 				closest_y = y
 				closest_centroid = [x,y,0.0]
-	return closest_centroid, centroids
+	return Point(*closest_centroid), centroids
 
 
 class greenCam:

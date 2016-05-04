@@ -1,5 +1,4 @@
 # provides helper functions for running high speed and quality visualizations
-
 import rospy
 import time
 from std_msgs.msg import Header, ColorRGBA, Float32
@@ -229,7 +228,7 @@ class VisualizationDriver(object):
         marker.action = 3 # DELETEALL action.
         return marker
 
-    def marker_from_green_goal(self, centroid, index=0, color=colorRGBA(0,0,1,1), lifetime = 10.0):
+    def marker_from_green_goal(self, centroid, index=0, color=ColorRGBA(0,0,1,1), lifetime = 10.0):
         marker = Marker()
         marker.header = Header(stamp=rospy.Time.now(), frame_id="base_link")
         marker.ns = "Markers_NS"
@@ -241,8 +240,8 @@ class VisualizationDriver(object):
 
         marker.pose = Pose()
         marker.pose.position.z = 0.0
-        marker.pose.position.x = centroid[0]
-        marker.pose.position.y = centroid[1]
+        marker.pose.position.x = centroid.x
+        marker.pose.position.y = centroid.y
         return marker
 
     def publish_green_goals(self, goals):
