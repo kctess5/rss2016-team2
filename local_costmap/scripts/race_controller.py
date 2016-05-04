@@ -3,21 +3,27 @@ from __future__ import print_function
 import rospy
 import threading, time, collections, heapq, itertools, math, sys, recordclass
 import numpy as np
+import os
 
 # message related imports
 from sensor_msgs.msg import LaserScan
 from rospy.numpy_msg import numpy_msg
+from std_msgs.msg import ColorRGBA
 
 # code from other files in this repo
 import navigator2 as navigator
 from visualization_driver import VisualizationDriver
 from helpers import param, euclidean_distance, FrameBuffer, polar_to_euclid
-from helpers import State, AccelerationState, CircleState, Path, StateRange, SearchNode, TreeNode
+from helpers import State, AccelerationState, Circle, CirclePathState, Path, StateRange, SearchNode, TreeNode
 from helpers import Point2D as Point
 from pathlib import arc_step, ackerman_radius
-from car_controller.control_module import ControlModule
+from pathlib2 import arc_step_fast
+from car_controller.direct_control_module import DirectControlModule
 import whinytimer
 from profilehooks import profile, timecall
+from heapq import nsmallest
+from whoami import is_racecar
+import matplotlib.pyplot as plt
 
 # from shapely.geometry import Point as GeoPoint
 # from shapely.ops import union
@@ -118,6 +124,28 @@ Citations:
 
 """
 
+
+class DynamicPlot():
+    def initialize(self):
+        plt.ion()
+        #Set up plot
+        self.fig = plt.figure(figsize=plt.figaspect(2.))
+        
+        self.ax0 = self.fig.add_subplot(1,1,1)
+        self.ax1 = self.fig.add_subplot(1,2,2)
+
+        self.redraw()
+        
+    def redraw(self):
+        #We need to draw *and* flush
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+
+
+if not is_racecar() and param("obstacle_map.vizualize_distmap"):
+    LOCAL_VIZ = DynamicPlot()
+    LOCAL_VIZ.initialize()
+
 class DynamicModel(object):
     """ Encapsulates the dynamics of the car """
     def __init__(self):
@@ -209,17 +237,15 @@ class DynamicModel(object):
         """ Gives an estimate for the final pose after assuming a given state after a given time. t=1 is time time of the next control timestep
         """
         effective_radius = self.estimate_effective_arc(state)
-        # print(state.steering_angle, state.speed, effective_radius)
             
-        propagated = arc_step(effective_radius, t * state.speed / self.execution_freq,
+        propagated = arc_step_fast(effective_radius, t * state.speed / self.execution_freq,
             state.x, state.y, state.theta)
         return State(x=propagated[0], y=propagated[1], theta=propagated[2], \
             steering_angle=state.steering_angle, speed=state.speed)
 
-    def propagate_accel(self, start_state, linear_accel, steering_velocity):
+    def propagate_accel(self, start_state, linear_accel, steering_velocity, num_segments):
         # NOTE: this function returns a list that DOES NOT include the given start state as 
         # it is assumed to be the last state in the previous path segment
-        # TODO: need to consider the state execution frequency
         # given a start state and accelerations, this returns a list of control states that make up the action
         # control_states = [start_state]
         control_states = []
@@ -229,7 +255,7 @@ class DynamicModel(object):
 
         # [(x,y,theta,steering,speed),...]
 
-        for i in xrange(param("planner.control_decisions_per_segment")):
+        for i in xrange(num_segments):
             # bound the speed to [0, max_speed]
             next_speed = max(min(param("dynamics.max_speed"), ls.speed + linear_accel / self.execution_freq), 0)
             # bound the angle to [-max_deflection, max_deflection]
@@ -300,22 +326,9 @@ class DynamicModel(object):
 
 DYNAMICS = DynamicModel()
 
-class ObjectManager(object):
-    """ Manages all inbound ROS communications
-            - this prevents unnecessary data flow
-    """
-    def __init__(self):
-        print(param("runtime_specific.scan_topic"))
-        self.scan_subscriber = rospy.Subscriber(param("runtime_specific.scan_topic"), \
-            numpy_msg(LaserScan), self.scan_callback, queue_size=1)
-        self.scan_callbacks = []
-
-    def scan_callback(self, data):
-        for cb in self.scan_callbacks:
-            cb(data)
-
-    def register_scan_callback(self, callback):
-        self.scan_callbacks.append(callback)
+# from skimage.morphology import medial_axis, skeletonize
+# from scipy.ndimage.filters import sobel, gaussian_filter
+# from skimage.feature import canny
 
 class ObstacleMap(object):
     """ Manages obstacle information from the scanner to provide admissibility information """
@@ -324,13 +337,16 @@ class ObstacleMap(object):
             (param("obstacle_map.xmin"),param("obstacle_map.xmax")), \
             (param("obstacle_map.ymin"),param("obstacle_map.ymax")))
         self.first_laser_recieved = False
-        # self.lock = threading.Lock() # used to serialize accesses to the main buffer
+        self.lock = threading.Lock() # used to serialize accesses to the main buffer
+        # origin of the costmap in the coordinate space that the car operates in
+        self.origin = State(x=0,y=0,theta=0,steering_angle=0,speed=0)
 
-    def filter_lasers(self, angles, ranges):
-        # remove the data on the edges, since they are noisy
-        l = round(angles.shape[0] / 10)
-        return (angles[l:-l], ranges[l:-l])
+    def filter_lasers(self, angles, ranges, laser_data):
+        # Include only data which is in bounds.
+        include_indices = np.where((ranges + 0.1 < laser_data.range_max))
+        return angles[include_indices], ranges[include_indices]
 
+    # @profile(sort="cumtime")
     def scan_callback(self, data):
         if not self.first_laser_recieved:
             print(("first laser received: "
@@ -341,20 +357,17 @@ class ObstacleMap(object):
             self.laser_angles = np.linspace(data.angle_min, data.angle_max, math.ceil(\
                 (data.angle_max - data.angle_min) / data.angle_increment))
         
-        laser_angles, laser_ranges  = self.filter_lasers(self.laser_angles, data.ranges)
+        laser_angles, laser_ranges  = self.filter_lasers(self.laser_angles, data.ranges, data)
         laser_x, laser_y =  polar_to_euclid(laser_angles, laser_ranges)
 
         # compute the distance transform from the laser scanner data
-        # with self.lock:
         self.buffer.clear()
-        for x, y, r in zip(laser_x, laser_y, laser_ranges):
-            if r < data.range_max-0.1:
-                self.buffer.add_sample(x,y)
+        self.buffer.add_samples(laser_x, laser_y)
         self.buffer.dist_transform()
         
         self.first_laser_recieved = True
         self.mark_clean()
-         
+
     def is_admissible(self, state):
         # returns true if the given control state is admissible
         # steps through t values between 0 and 1 while checking that each point is 
@@ -387,10 +400,28 @@ class ObstacleMap(object):
     # used to ensure/sanity check that each costmap is only used once, to avoid wasted compute
     def mark_clean(self):
         self.dirty = False
+
     def is_dirty(self):
         return self.dirty
+
     def mark_dirty(self):
         self.dirty = True
+
+    def viz(self):
+        if not self.buffer.distmap == None:        
+            # dist = self.buffer.distmap
+            # skel = gaussian_filter(dist, sigma=1)
+            # skel = canny(skel)
+            # skel = sobel(self.buffer.buffer)
+
+            # dist /= (dist.max()/255.0)
+            # skel /= (skel.max()/255.0)
+
+            LOCAL_VIZ.ax0.imshow(self.buffer.distmap)
+            # LOCAL_VIZ.ax0.imshow(skel)
+            # LOCAL_VIZ.ax1.imshow(dist)
+            LOCAL_VIZ.redraw()
+        # self.viz.laser_euclid.set_data(self.expected_angles, self.expected_ranges)
 
 class GoalManager(object):
     """ Manages and tracks the car's concept of purpose in life
@@ -399,6 +430,7 @@ class GoalManager(object):
     """
     def __init__(self, viz):
         self.navigator = navigator.Navigator(viz)
+        self.origin = None
 
     def next_goal(self):
         """ Return the position of the next goal in local coordinates
@@ -448,6 +480,17 @@ class HeuristicSearch(object):
                 return
             self._step()
 
+    def search_nsteps(self, step_limit):
+        """Run a fixed number of steps.
+        Using search is preferable. This exists to make profiling easier.
+        """
+        # extend nodes until the step limit is reached
+        for _ in xrange(step_limit):
+            if len(self.frontier) == 0:
+                print("Search failed, bailing early")
+                return
+            self._step()
+
     def _step(self):
         """ Perform one iteration of heuristic search - extend a single node.
             Requires that self.frontier is not empty.
@@ -487,10 +530,6 @@ class HeuristicSearch(object):
         #     return self.make_path(self.found_paths[0][1])
         elif len(self.found_paths) == 0:
             return self.make_path(self.frontier[0][1])
-        # else:
-        #     # TODO: if a reasonably good path is found, we might want to use that by default
-        #     bp = self.frontier[0][1] if self.frontier[0][0] < self.found_paths[0][0] else self.found_paths[0][1]
-        #     return self.make_path(bp)
 
     def complete_paths(self):
         return map(lambda x: self.make_path(x[1]), self.found_paths)
@@ -543,123 +582,15 @@ class HeuristicSearch(object):
     def neighbors(self, state):
         # return a discretized set of neighbors of the given state
         raise NotImplementedError("HeuristicSearch neighbors not specified")
-        
-class PathPlanner(HeuristicSearch):
-    """docstring for PathPlanner"""
-    def __init__(self, obstacles, goals):
-        self.obstacles = obstacles
-        self.goals = goals
-
-        super(PathPlanner, self).__init__()
-        
-    def cost(self, state):
-        # time is our optimization target, so the cost of any given segment is constant
-        xp = [0, 1.2, 1000]
-        fp = [2.0, 1.1, 1.0]
-
-        obstacle_coeff = np.interp(self.obstacles.dist_at(state), xp, fp)
-        # return 1.0 / float(param("planning_freq"))
-        return obstacle_coeff / float(param("planning_freq"))
-
-    def is_admissible(self, state):
-        return self.obstacles.is_admissible(state)
-
-    def heuristic_old(self, state, goal_state):
-        # print
-        # print((int(state.x), int(state.y), state.theta), (int(goal_state.x), int(goal_state.y), goal_state.theta))
-        # print(np.cos(abs(goal_state.theta - state.theta)))
-        # return an estimate for cost to go between the given state and the goal state
-        # TODO: Dubin's curves, or other better heuristic
-
-        # heuristic is measure of cost to get to goal
-        # high deflection -> high cost
-        # 0 deflection, minimal cost
-        # print(np.cos(abs(state.theta - goal_state.theta)), goal_state.theta, state.theta)
-        # t = d / v
-        
-        # xp = [0, 0.7]
-        # fp = [2.0, 1]
-
-        # obstacle_coeff = np.interp(self.obstacles.dist_at(state), xp, fp)
-
-        # approx_d = euclidean_distance(state, goal_state) /  math.pow(np.cos(abs(state.theta - goal_state.theta)), 1)
-        # approx_v = state.speed
-        # approx_d = euclidean_distance(state, goal_state)
-
-        # return (euclidean_distance(state, goal_state) * obstacle_coeff) / (state.speed+0.0001)
-        # bad approximation of the deflection slowdown
-        # return euclidean_distance(state, goal_state) /  np.cos(abs(state.theta - goal_state.theta))
-
-        # return max(euclidean_distance(state, goal_state), abs(state.theta - goal_state.theta)*param("dynamics.r_min")) / param("dynamics.max_speed")
-        q0 = (state.x, state.y, state.theta)
-        q1 = (goal_state.x, goal_state.y, goal_state.theta)
-        turning_radius = 1.3
-
-        return dubins.path_length(q0, q1, turning_radius) / param("dynamics.max_speed")
-
-    def heuristic(self, state, goal_state):
-        """Estimate the time it would take to get from state to goal_state.
-        By taking a few dubins curves at different turning radii and returning the best time.
-        """
-        # Take the min of several dubins curves.
-        q0 = (state.x, state.y, state.theta)
-        q1 = (goal_state.x, goal_state.y, goal_state.theta)
-        # Turning radii to try.
-        # TODO parameterize this curvature range.
-        turning_radii = np.linspace(0.001, 2.0, num=5)
-        time = self.dubins_time(q0, q1, turning_radii)
-        return time
-
-    def goal(self):
-        # return the next goal state
-        return self.goals.next_goal()
-
-    def goal_met(self, state, goal_state):
-        return euclidean_distance(state, goal_state) < float(param("planner.goal_distance_threshold"))
-
-    def neighbors(self, state):
-        """ find a list of candidate control settings to consider
-                - optimal control is assumed to entail setting speed to min or max possible values 
-                  at any given timestep, considering that the car should either be quickly accelerating,
-                  quickly decelerating, or traveling at the top speed at any given time
-                - if the reachable angular control range includes steering_angle=0, then we 
-                  need to make sure that 0 is one of the options so that the car doesn't
-                  take an unnecessarily curvy path
-        """ 
-        # print()
-        # print("neighbors", state)
-        reachable_range = DYNAMICS.reachable_neighbors(state)
-        angles = np.linspace(reachable_range.min.steering_angle, reachable_range.max.steering_angle, param("planner.angular_branch_factor"))
-        speeds = [reachable_range.min.speed, reachable_range.max.speed]
-
-        # Don't consider paths with zero speed - that's dumb
-        if speeds[0] == 0:
-            speeds = [speeds[1]]
-
-        # make sure that steering_angle=0 is an option if the range includes it
-        if reachable_range.min.steering_angle < 0 and reachable_range.max.steering_angle > 0:
-            # print("CONTAINS ZERO")
-            # find index of value closest to zero
-            idx = min(xrange(len(angles)), key=lambda i: abs(angles[i]))
-            # set to zero
-            angles[idx] = 0.0
-
-        # make all possible combinations of speeds and steering angles - [angle, speed]
-        candidate_controls = list(itertools.product(angles, speeds))
-        # convert into states
-        candidate_controls = map(lambda x: State(x=state.x, y=state.y, theta=state.theta, \
-            steering_angle=x[0], speed=x[1]), candidate_controls)
-
-        # propagate the position and orientation forward one control timestep according to the dynamics model
-        return map(DYNAMICS.propagate, candidate_controls)
 
 class AccelerationPlanner(HeuristicSearch):
     """ Implements path planning by considering constant acceleration path segments
     """
     def __init__(self, obstacles, goals):
-        # self.steering_options = [[-1.0,0.0,1.0], [-1.0, -0.5, -.15, -0.05, 0.0, 0.05, 0.15, 0.5, 1.0]]
-        self.steering_options = [[-1.0,0.0, 1.0], [-0.4, -.15, -0.04, 0.0, 0.04, 0.15, 0.4]]
-        # self.steering_options = [[], [-0.1, 0.0, 0.4]]
+        self.circle_path = None
+        # TODO parameterize this
+        # self.steering_options = [[-1.0,0.0, 1.0], [-0.4, -.15, -0.04, 0.0, 0.04, 0.15, 0.4]]
+        self.steering_options = [[-1.0,0.0, 1.0], [-1.0, -0.4, -.12, -0.04, 0.0, 0.04, 0.12, 0.4, 1.0]]
         self.steering_options = map(lambda l: map(lambda x: float(param("dynamics.max_angular_velocity"))*x, l), self.steering_options)
 
         self.obstacles = obstacles
@@ -671,17 +602,12 @@ class AccelerationPlanner(HeuristicSearch):
 
         super(AccelerationPlanner, self).__init__()
 
+    def reset(self, start_state, circle_path=None):
+        self.circle_path = circle_path
+        super(AccelerationPlanner, self).reset(start_state)
+        
     def cost(self, accel_state):
-        # time is our optimization target, so the cost of any given segment is constant
-        # steering_bias
-        # 
-        # xp = [0, 2, 1000]
-        # fp = [1.3, 1, 0]
-
-        # distance_bias = np.interp(self.obstacles.dist_at(accel_state.control_states[-1]), xp, fp)
-        # steering_bias = 1 + 0.2*abs(accel_state.control_states[-1].steering_angle) / param("dynamics.max_deflection")
-        # return steering_bias * distance_bias * param("planner.control_decisions_per_segment") / float(param("execution_freq")) 
-        return param("planner.control_decisions_per_segment") / float(param("execution_freq")) 
+        return len(accel_state.control_states) / float(param("execution_freq")) 
 
     # this big function is designed to check as few points as possible along the given path
     # it evaluates the distance function at the first point along the path, and then it steps
@@ -740,7 +666,7 @@ class AccelerationPlanner(HeuristicSearch):
 
         return param("planner.heuristic_bias")*dubins.path_length(q0, q1, turning_radius) / float(param("dynamics.max_speed"))
 
-    def heuristic(self, accel_state, goal_state):
+    def heuristic_old2(self, accel_state, goal_state):
         """Estimate the time it would take to get from state to goal_state.
         By taking a few dubins curves at different turning radii and returning the best time.
         """
@@ -755,45 +681,96 @@ class AccelerationPlanner(HeuristicSearch):
         time = DYNAMICS.dubins_time(q0, q1, turning_radii)
         return time*param("planner.heuristic_bias")
 
+    def heuristic(self, accel_state, goal_state):
+        """Estimate the time it would take to get from state to goal_state.
+        By taking a few dubins curves at different turning radii and returning the best time.
+        """
+
+        # if the final goal is nearby, we need to check every intermediate control state 
+        # to get a better heuristic estimate, in case the chosen path overshoots
+        # TODO might want to make the path terminate at the control state where the goal is reached
+        q1 = (goal_state.x, goal_state.y, goal_state.theta)
+
+        if euclidean_distance(accel_state.control_states[-1], goal_state) \
+            < euclidean_distance(accel_state.control_states[-1], accel_state.control_states[0]):
+            return param("planner.heuristic_bias")*min(map(lambda s: 
+                DYNAMICS.dubins_time((s.x, s.y, s.theta), q1, [param("dynamics.r_min")]), accel_state.control_states))
+        else:
+            # only check the end state
+            s = accel_state.control_states[-1]
+            q0 = (s.x, s.y, s.theta)
+            
+            # Take the min of several dubins curves.
+            # Turning radii to try.
+            # TODO parameterize this curvature range.
+            turning_radii = np.linspace(1.3,4.5, num=3)
+            return param("planner.heuristic_bias") * DYNAMICS.dubins_time(q0, q1, turning_radii)
+
+    def heuristic_circle(self, accel_state, goal_state):
+        """Estimate the time it would take to get from state to goal_state.
+        By taking a few dubins curves at different turning radii and returning the best time.
+        """
+
+        if self.circle_path:
+            end_state = accel_state.control_states[-1]
+            c = self.associated_circle(end_state)
+            return param("planner.heuristic_bias") * ( euclidean_distance(c.circle, end_state) + c.dist_goal ) / param("dynamics.max_speed")
+        else:
+            return self.heuristic_new(accel_state, goal_state)
+
     def goal(self):
         # return the next goal state
         return self.goals.next_goal()
 
     def goal_met(self, accel_state, goal_state):
-        return min(map(lambda x: euclidean_distance(x, goal_state), accel_state.control_states)) < float(param("planner.goal_distance_threshold"))
-        # return euclidean_distance(accel_state.control_states[-1], goal_state) < float(param("planner.goal_distance_threshold"))
+        # if the path length is large compared to the distance between the end and the goal
+        # we check intermediate path points, otherwise we only check the end effector
+        if not param("planner.test.enabled") and euclidean_distance(accel_state.control_states[-1], goal_state) \
+            < euclidean_distance(accel_state.control_states[-1], accel_state.control_states[0]):
+            return min(map(lambda x: 
+                euclidean_distance(x, goal_state), accel_state.control_states)) < float(param("planner.goal_distance_threshold"))
+        else:
+            return euclidean_distance(accel_state.control_states[-1], goal_state) < float(param("planner.goal_distance_threshold"))
 
     def should_bail(self, state, goal_state):
+        # bail if the end effector is further from the robot than the goal
         return euclidean_distance(state.control_states[-1], Point(x=0, y=0)) > euclidean_distance(goal_state, Point(x=0, y=0))
 
     def max_speed_given_dist(self, dist):
-        # want to stay below a certain speed depending on the distance from the walls
-        # based on stopping time given distances
+        # TODO might want to limit max speed depending on environmental factors
         return param("dynamics.max_speed")
-        # xp = [param("obstacle_map.min_distance"), 1.0, 1000]
-        # fp = [0.8, param("dynamics.max_speed"), param("dynamics.max_speed")]
-        # return np.interp(dist, xp, fp)
+
+    def associated_circle(self, control_state):
+        closest = nsmallest(3, self.circle_path.states, key=lambda x: euclidean_distance(x.circle, control_state))
+        # return whichever circle associates with the given control_state for the heuristic
+        return min(closest, key=lambda x: x.dist_goal + euclidean_distance(x.circle, control_state))
+
+    def step_size(self, state):
+        if self.circle_path:
+            c = self.associated_circle(state)
+            return min(param("planner.alpha") * c.circle.radius, param("planner.beta") * c.dist_goal, param("planner.min_step"))
+        else:
+            return param("planner.min_step")
 
     def neighbors(self, accel_state):
-        # print("neighbors called on:", accel_state)
         start_state = accel_state.control_states[-1]
-        # TODO: precompute these options, and use a set of better spaced options
+        if start_state.speed == 0:
+            num_segments = int(param("planner.max_segments"))
+        else:
+            step_size = self.step_size(start_state)
+            num_segments = math.floor((step_size / abs(start_state.speed)) * float(param("execution_freq")))
+            num_segments = int(min(max(num_segments, 1),  param("planner.max_segments")))
+        # num_segments = param("planner.control_decisions_per_segment")
         # linear accel options: max accel, max decel, unity
         accel_options = []
         decel_options = []
 
-        # if start_state.speed < param("epsilon"):
-        #     can_decel = False
-        #     # TODO: might want to consider a lower acceleration option for dealing with turning sharper while stuck
-        #     accel_options = [param("dynamics.max_linear_accel")] 
-        # else:
         # limit the max speed at any given point in space to avoid going too fast near obstacles
-        max_target_speed = self.max_speed_given_dist(self.obstacles.dist_at(accel_state.control_states[-1]))
+        max_target_speed = self.max_speed_given_dist(self.obstacles.dist_at(start_state))
         current_speed = accel_state.control_states[-1].speed
 
         # this is positive if the car is over speed
-        diff = current_speed - max_target_speed
-        accel_target = param("execution_freq")*(max_target_speed - current_speed)/param("planner.control_decisions_per_segment")
+        accel_target = param("execution_freq")*(max_target_speed - current_speed)/float(num_segments)
 
         if accel_target < param("dynamics.max_linear_decel"):
             # linear_accel_options = [param("dynamics.max_linear_decel"), param("dynamics.max_linear_accel")] 
@@ -826,8 +803,8 @@ class AccelerationPlanner(HeuristicSearch):
 
         # map each control choice to an actual search state, complete with intermediate control states
         return map( lambda cc: \
-            AccelerationState(control_states=DYNAMICS.propagate_accel(start_state, cc[0], cc[1]), steering_velocity=cc[1], linear_accel=cc[0]), \
-                candidate_controls)
+            AccelerationState(control_states=DYNAMICS.propagate_accel(start_state, cc[0], cc[1], num_segments), 
+                steering_velocity=cc[1], linear_accel=cc[0]), candidate_controls)
 
 class SpaceExploration(HeuristicSearch):
     """ This class implements lower dimensional search to provide a high quality
@@ -853,37 +830,29 @@ class SpaceExploration(HeuristicSearch):
 
     def reset(self, start_state):
         # Frontier is a priority queue.
-        start_state = CircleState(x=start_state.x, y=start_state.y, radius=self.circle_radius(start_state))
+        start_state = Circle(x=start_state.x, y=start_state.y, radius=self.circle_radius(start_state))
         super(SpaceExploration, self).reset(start_state)
 
     def cost(self, state):
         return state.radius
+    
     def heuristic(self, state, goal_state):
         return (euclidean_distance(state,goal_state) - state.radius)*param("space_explorer.heuristic_bias")
+    
     def overlap(self, s1, s2, percentage=.15):
-        # NOTE: this is a bit of a hack to go faster, percentage overlap not accurate
+        # TODO/NOTE: this is a bit of a hack to go faster, percentage overlap not accurate
         if euclidean_distance(s1, s2) > (s1.radius + s2.radius)*(1.0-percentage):
             return False
         else:
             return True
 
-        # r = min(s1.radius,s2.radius)
-        # a = r*r*math.pi
-
-        # TODO: the equation here might be faster than the library:
-        # http://jwilson.coe.uga.edu/EMAT6680Su12/Carreras/EMAT6690/Essay2/essay2.html
-        # p1 = GeoPoint(s1.x, s1.y).buffer(s1.radius)
-        # p2 = GeoPoint(s2.x, s2.y).buffer(s2.radius)
-
-        # return p1.intersection(p2).area / a > percentage
-    
     def goal(self):
         g=self.goals.next_goal()
         r = self.circle_radius(g)
         # if the goal is out of bounds it returns a very large value, fix that
         if r > 100:
             r = 1.0
-        return CircleState(x=g.x, y=g.y, radius=r)
+        return Circle(x=g.x, y=g.y, radius=r)
 
     def goal_met(self, state, goal_state):
         return self.overlap(state, goal_state, float(param("space_explorer.overlap_percentage_goal")))
@@ -923,7 +892,7 @@ class SpaceExploration(HeuristicSearch):
         self.radii.fill(state.radius)
         xs, ys = polar_to_euclid(self.thetas, self.radii)
 
-        return map(lambda x: CircleState( \
+        return map(lambda x: Circle( \
             x=state.x+x[0], y=state.y+x[1], radius=self.circle_radius(Point(x=state.x+x[0], y=state.y+x[1]))),
                 zip(xs,ys))
 
@@ -932,18 +901,32 @@ class SpaceExploration(HeuristicSearch):
             return self.make_path(self.found_paths[0][1], True)
         return None
     
-class ChallengeController(ControlModule):
+class ChallengeController(DirectControlModule):
     """ Top level car control for the 6.141 Challenge"""
     def __init__(self):
-        super(ChallengeController, self).__init__("challenge_controller")
+        print(param("runtime_specific.racecar_env"))
+        super(ChallengeController, self).__init__("challenge_controller", racecar_env=param("runtime_specific.racecar_env"))
 
         # initialize the control state management
         self.state_history = [State(x=0, y=0, theta=0, steering_angle=0, speed=0)]
         self.current_path = None
         self.state_index = 0
 
+        # counter for tracking fps of control
+        self.control_count = 0
+        self.exec_count = 0
+        self.start_time = rospy.get_rostime().to_sec()
+        self.exec_start_time = rospy.get_rostime().to_sec()
+        self.search_time_limit = 1.0/float(param("planning_freq"))
+        self.computing_control = False
+        self.since_scan_recieved = []
+
+        # used for one off path tests
+        self.test_started = False
+        self.test_path = None
+        self.control_steps_per_plan_interval = int(math.ceil(float(param("execution_freq")) * self.search_time_limit))
+
         # initialize peripheral algorithms
-        self.resources = ObjectManager()
         self.viz = VisualizationDriver()
 
         self.goals = GoalManager(self.viz)
@@ -952,60 +935,150 @@ class ChallengeController(ControlModule):
             self.space_explorer = SpaceExploration(self.obstacles, self.goals)
         self.path_planner = AccelerationPlanner(self.obstacles, self.goals)
 
-        # hook up necessary data flow
-        self.resources.register_scan_callback(self.obstacles.scan_callback)
-        self.resources.register_scan_callback(self.goals.scan_callback)
+        self.scan_subscriber = rospy.Subscriber(param("runtime_specific.scan_topic"),
+            numpy_msg(LaserScan), self.scan_callback, queue_size=1)
 
         # whinytimer.WhinyTimer(rospy.Duration(1.0 / float(param("planning_freq"))), self.compute_control)
-        rospy.Timer(rospy.Duration(1.0 / float(param("planning_freq"))), self.compute_control)
+        # set the timer for a bit under the target because the search function will slow down as necessary
+        # to hit the inteded speed limit
+        # rospy.Timer(rospy.Duration(0.95 / float(param("planning_freq"))), self.compute_control)
         rospy.Timer(rospy.Duration(1.0 / float(param("execution_freq"))), self.execute_control)
         rospy.on_shutdown(lambda: self.on_shutdown())
 
-    def next_path_segment(self):
-        # return the next state in the currently executing path if possible
+        if param("obstacle_map.vizualize_distmap"):
+            while not rospy.is_shutdown():
+                self.loop()
+                rospy.sleep(0.4)
+
+    def test_control(self):
+        if not self.test_started:
+            self.test_started = True
+            start_state = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
+            start_accel_state = AccelerationState(control_states=[start_state], linear_accel=0, steering_velocity=0)
+            
+            self.path_planner.reset(start_state=start_accel_state)
+            
+            goal_state = param("planner.test.goal")
+            self.path_planner.goal_state = State(x=goal_state[0], y=goal_state[1], theta=goal_state[2], steering_angle=0, speed=0)
+            self.path_planner.search(time_limit=1.0)
+
+            self.test_path = self.path_planner.best()
+
+            # begin executing the new path. if no path is found, the path will be set to 
+            # none, and the emergency planner can take over
+            self.commit_path(self.test_path) 
+
+            if self.test_path:
+                print("FOUND TEST PATH, committing.")
+                speeds = map(lambda x: round(x.speed,2), self.test_path.states)
+                angles = map(lambda x: round(x.steering_angle,2), self.test_path.states)
+                print("speeds:", speeds)
+                print("angles:", angles)
+                print(self.test_path.states[-1])
+
+        if self.test_path:
+            # visualize paths if necessary
+            if self.viz.should_visualize("path_search.test_goal"):
+                self.viz.publish_test_goal(self.path_planner.goal_state, ColorRGBA(1,1,1,1))
+            if self.viz.should_visualize("path_search.best_path"):
+                self.viz.publish_best_path(self.test_path)
+            if self.viz.should_visualize("path_search.complete_paths"):
+                self.viz.publish_complete_path(self.path_planner.complete_paths())
+            if self.viz.should_visualize("path_search.viable_paths"):
+                self.viz.publish_viable_paths(self.path_planner.tree_root)
+                # self.viz.publish_viable_accel_paths(self.path_planner.tree_root)
+
+    # compute dist_goal for each node in the the given circle path
+    def augment_circle_path(self, raw_path):
+        augmented_path = []
+        dist_goal = 0
+        for i in reversed(raw_path.states):
+            augmented_path.append(CirclePathState(circle=i, dist_goal=dist_goal))
+            dist_goal += i.radius
+        return Path(states=augmented_path[::-1])
+
+    def optimize_time_limit(self):
+        # this function will decrease the search time limit if the planning is taking too long
+        # otherwise it decrease 
+        # place reasonable bounds on the time to prevent crazy results
+        max_time = 1.2/float(param("planning_freq"))
+        min_time = 0.4/float(param("planning_freq"))
+
+        percentage_slower_than_goal = (float(param("planning_freq")) - self.planning_fps())/float(param("planning_freq")) 
+        self.search_time_limit = np.clip(self.search_time_limit * (1.0 - percentage_slower_than_goal), min_time, max_time)
+
+        # update the expected number of steps per plan interval so that the emergency planners
+        # can use the coorect number of control steps
+        self.control_steps_per_plan_interval = int(math.ceil(float(param("execution_freq")) * self.search_time_limit))
+
+    def planning_fps(self):
+        return float(self.control_count) / (rospy.get_rostime().to_sec() - self.start_time)
+
+    def execution_fps(self):
+        return float(self.exec_count) / (rospy.get_rostime().to_sec() - self.exec_start_time)
+
+    def reset_fps(self, which="planning"):
+        if which=="planning":
+            self.start_time = rospy.get_rostime().to_sec()
+            self.control_count = 0
+        elif which=="execution":
+            self.exec_start_time = rospy.get_rostime().to_sec()
+            self.exec_count = 0
+
+    def integrate_forward(self, time_delta):
+        # returns an estimate of where the car will be at the given time offset from now
+        # in the frame of the latest scan data
+        path_segments_executed = time_delta * float(param("execution_freq"))
+        num_executed = int(math.floor(path_segments_executed))
+        # print(num_executed)
+        # the index of the control state that will be executed right before the desired
+        # time is the current state index + number of expected
+        leftover = path_segments_executed % 1.0
+
+        control_steps = map(lambda x: (x.steering_angle, x.speed), self.since_scan_recieved)
         
-        # we have a valid path if there is an available path and it has not been completed
-        if self.current_path and self.state_index < len(self.current_path.states):
-            next_state = self.current_path.states[self.state_index]
-            self.state_index += 1
+        if self.current_path:
+            future = self.current_path.states[self.state_index:self.state_index + num_executed]
+            control_steps += map(lambda x: (x.steering_angle, x.speed), future)
+        else:
+            print("NO PATH")
+
+        ls = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
+        next_state = None
+        for i in control_steps:
+            next_state = State(x=ls.x, y=ls.y, theta=ls.theta, steering_angle=i[0], speed=i[1])
+            next_state = DYNAMICS.propagate(next_state)
+            ls = next_state
+
+        if next_state:
             return next_state
         else:
-            # we do not have a currently commited path, apply the last action with damping
-            ls = self.state_history[-1]
-            # TODO: propagate the state forward according to the dynamic model
-            return State(x=ls.x, y=ls.y, theta=ls.theta, \
-                speed=ls.speed, steering_angle=ls.steering_angle)
-
-    def stop_path(self, steering_damping=1):
-        # continue the next path segment while stopping as fast as possible
-        ps = self.next_path_segment()
-        next_speed = max(0.0, self.state_history[-1].speed + DYNAMICS.max_decel)
-        next_steering = ps.steering_angle * float(param("emergency.stop_path_steering_damp_factor"))
-
-        # stop wiggling the wheels once the car is stopped
-        if next_speed == 0.0:
-            next_steering = 0.0
-
-        # TODO: propagate the state forward according to the dynamic model
-        next_state = State(x=ps.x, y=ps.y, theta=ps.theta, speed=next_speed, steering_angle=next_steering)
-        self.execute_state(next_state)
-
-    def continue_path(self):
-        # continue the next path segment as planned
-        self.execute_state(self.next_path_segment())
-
-    def back_up(self):
-        next_state = State(x=0, y=0, theta=0, speed=param("planner.backup_speed"), steering_angle=0)
-        self.execute_state(next_state)
-
-    def stuck_control(self):
-        # what to do when the car is stuck according to the path planner
-        # for now, just stop as fast as possible while continuing path TODO: maybe do something a bit fancier
+            return State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
         
-        if (self.state_history[-1].speed > 0):
-            self.stop_path()
-        else:
-            self.back_up()
+    def scan_callback(self, data):
+        # if the car is already thinking, just drop this scan
+        if self.computing_control:
+            # print("DROPPING SCAN DATA")
+            return
+
+        thread = threading.Thread(target=lambda: self._scan_callback(data))
+        thread.daemon = True
+        thread.start()
+    
+    @profile(sort='cumtime')
+    def _scan_callback(self, data):
+        # this is the primary entry point for our planning algorithm
+        #   - compute obstacle map
+        #   - compute navigation
+        #   - estimate path start point
+        #   - compute path
+
+        self.computing_control = True
+        self.since_scan_recieved = []
+        self.obstacles.scan_callback(data)
+        self.goals.scan_callback(data)
+        self.compute_control()
+        self.computing_control = False
 
     @profile(sort='tottime')
     def compute_control(self, event=None):
@@ -1013,65 +1086,66 @@ class ChallengeController(ControlModule):
             print("Waiting for laser data...")
             return False
 
-        start_state = State(x=0, y=0, theta=0, \
-            # steering_angle=self.state_history[-1].steering_angle, speed=param("dynamics.max_speed"))
-            steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+        if (self.control_count + 1) % param("planner.fps_optimization_iteration_count") == 0:
+            print ("planning fps: ", self.planning_fps())
+            self.optimize_time_limit()
+            self.reset_fps()
+
+        # if the test is set to occur, this should pass control to that function by returning
+        if param("planner.test.enabled"):
+            self.test_control()
+            return 
+
+        start_state = self.integrate_forward(self.search_time_limit)
         start_accel_state = AccelerationState(control_states=[start_state], linear_accel=0, steering_velocity=0)
 
         best_path = None
         if param("space_explorer.enabled"):
             self.space_explorer.reset(start_state=start_state)
-            t = self.space_explorer.search(time_limit=0.5/float(param("planning_freq")))
-            # print(t, self.space_explorer.step_count)
-            if not self.space_explorer.best():
-                print("NO PATH FOUND")
+            t = self.space_explorer.search(time_limit=0.4/float(param("planning_freq")))
+            circle_path = self.space_explorer.best()
+
             if self.viz.should_visualize("space_explorer.explored"):
                 self.viz.publish_exploration_circles(self.space_explorer.tree_root)
+
+            # if the circle path finder fails, it is unlikely that a valid path exists
+            # and the car should perform stuck control
+            if not circle_path:
+                print("NO PATH FOUND")
+                self.stuck_control()
+                # self.obstacles.lock.release()
+                return
+
             if self.viz.should_visualize("space_explorer.path") and self.space_explorer.best():
-                self.viz.publish_path_circles(self.space_explorer.best())
+                self.viz.publish_path_circles(circle_path)
+
+            circle_path = self.augment_circle_path(circle_path)
+            self.path_planner.reset(start_state=start_accel_state, circle_path=circle_path)
+            self.path_planner.search(time_limit=0.5/float(param("planning_freq")))
             
+            best_path = self.path_planner.best()
+
+            print("Computed control with "+ str(self.path_planner.step_count) + " kinodynamic extensions and " 
+                + str(self.space_explorer.step_count) + " circle extensions")
         else:
+
             self.path_planner.reset(start_state=start_accel_state)
-            self.path_planner.search(time_limit=0.8/float(param("planning_freq")))
+            self.path_planner.search(time_limit=self.search_time_limit)
+            # self.path_planner.search_nsteps(43)
 
             best_path = self.path_planner.best()
-            if best_path:
-                speeds = map(lambda x: round(x.speed,2), best_path.states)
-                print(speeds)
-
-        
-
-            # if best_path and type(best_path.states[0]) == AccelerationState:
-            #     control_states = reduce(lambda x,y: x+y, map(lambda x: x.control_states, best_path.states))
-            #     best_path = Path(states=control_states)
-
-            # 
-            # start_state = State(x=0, y=0, theta=0, \
-            #     steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
-            # self.path_planner.reset(start_state=start_state)
-            # # search for a viable path, taking at most half the available computation time
-            # self.path_planner.search(time_limit=0.5/float(param("planning_freq")))
-            # # choose the best path
-            # profile = map(lambda x: (x.linear_accel, x.steering_velocity), self.path_planner.best().states)
-            # best_path = reduce(lambda x,y: x+y, map(lambda x: x.control_states, self.path_planner.best().states))
-            # print(best_path)
-            # print(profile)
-            # # best_path = reduce(lambda x,y: x+y, map(lambda x: x.control_states, self.path_planner.best()))
-            # print()
-            # for i in self.path_planner.best().states:
-            #     print(i)
-            # print(best_path[0])
+            # if best_path:
+            #     speeds = map(lambda x: round(x.speed,2), best_path.states)
+            #     print(speeds)
 
             print("Computed control with " + str(self.path_planner.step_count) + " graph extensions")
 
         if best_path == None:
-            # perform default stuck control
+            # commit emergency plan
             self.stuck_control()
         else:
-            # print(max(map(lambda x: x.speed, best_path.states)))
-            self.commit_path(best_path) # begin executing the new path
-            # TODO: decouple path execution from path planning so they can run at different hz
-            # self.continue_path()
+             # begin executing the new path. if no path is found, the path will be set to 
+            self.commit_path(best_path) 
 
             # visualize paths if necessary
             if self.viz.should_visualize("path_search.best_path"):
@@ -1080,49 +1154,120 @@ class ChallengeController(ControlModule):
                 self.viz.publish_complete_path(self.path_planner.complete_paths())
             if self.viz.should_visualize("path_search.viable_paths"):
                 self.viz.publish_viable_paths(self.path_planner.tree_root)
-                # self.viz.publish_viable_accel_paths(self.path_planner.tree_root)
+        
+            self.control_count += 1
 
     def execute_control(self, event=None):
-        self.continue_path()
+        if not self.is_enabled():
+            return
+
+        if self.current_path and self.state_index < len(self.current_path.states):
+            next_state = self.current_path.states[self.state_index]
+            self.state_index += 1
+            self.execute_state(next_state)
+        else:
+            print("NO PATH")
+            # no path is available, so queue the stop path
+            self.commit_path(self.make_stop_path())
+            # start the stopping procedure
+            self.execute_control()
 
     def commit_path(self, path):
         self.current_path = path
         self.state_index = 0
 
-    # callback for when the car is disabled
-    def disabled(self):
-        print("disabled clkbk")
-        self.state_history.append(State(x=0, y=0, theta=0, steering_angle=0, speed=0))
+    def make_stop_path(self, steering_angle=0):
+        last_state = self.state_history[-1]
+        next_steering = steering_angle
+        stop_path = []
+
+        for i in xrange(self.control_steps_per_plan_interval+10):
+            next_speed = max(0.0, last_state.speed + DYNAMICS.max_decel)
+            if next_speed == 0.0:
+                next_steering = 0.0
+            next_state = State(x=last_state.x, y=last_state.y, theta=last_state.y, \
+                speed=next_speed, steering_angle=next_steering)
+            next_state = DYNAMICS.propagate(next_state)
+            stop_path.append(next_state)
+            last_state = next_state
+        return Path(states=stop_path)
+
+    def make_back_up_path(self):
+        """ Computes a path which backs the robot up for one planner timestep
+        """
+
+        last_state = self.state_history[-1]
+        backup_path = []
+        for i in xrange(self.control_steps_per_plan_interval+10):
+            next_state = State(x=last_state.x, y=last_state.y, theta=last_state.y, \
+                speed=param("planner.backup_speed"), steering_angle=0)
+            next_state = DYNAMICS.propagate(next_state)
+            backup_path.append(next_state)
+            last_state = next_state
+
+
+        # # TODO need to propagate the positions in time
+        # # TODO pick the backup path more smartly if necessary
+        # backup_path = [State(x=0, y=0, theta=0, speed=param("planner.backup_speed"), steering_angle=0)] * (self.control_steps_per_plan_interval+2)
+        return Path(states=backup_path)
+
+    def stuck_control(self):
+        # what to do when the car is stuck according to the path planner
+        # should modify the path
+        if (self.state_history[-1].speed > 0):
+            self.commit_path(self.make_stop_path(steering_angle=self.state_history[-1].steering_angle))
+        else:
+            self.commit_path(self.make_back_up_path())
 
     def execute_state(self, state):
         if not self.is_enabled():
             return
 
+        if (self.exec_count + 1) % param("planner.fps_optimization_iteration_count") == 0:
+            print ("execution fps: ", self.execution_fps())
+            self.reset_fps("execution")
+
         # apply the given path to the car, continue it until told otherwise
         self.state_history.append(state)
-        # print(state.speed)
+        self.since_scan_recieved.append(state)
+
+        # if state.speed < 0:
+        #     print (state.steering_angle)
 
         # send the message to the car
-        # TODO: maybe an asynchronous state commit system will be more flexible
-        control_msg = self.make_message("direct_drive")
-        control_msg.drive_msg.speed = state.speed
-        control_msg.drive_msg.steering_angle = state.steering_angle
-        self.control_pub.publish(control_msg)
+        self.direct_set(speed=state.speed, steering_angle=state.steering_angle)
 
         if self.viz.should_visualize("path_search.speed"):
             self.viz.publish("path_search.speed", state.speed)
         if self.viz.should_visualize("path_search.speed"):
             self.viz.publish("path_search.speed", state.speed)
+
+        self.exec_count += 1
+
+    # callback for when the car is disabled
+    def disabled(self):
+        self.state_history.append(State(x=0, y=0, theta=0, steering_angle=0, speed=0))
 
     def on_shutdown(self):
         """Stop the car."""
-        control_msg = self.make_message("direct_drive")
-        control_msg.drive_msg.speed = 0
-        control_msg.drive_msg.steering_angle = 0
-        self.control_pub.publish(control_msg)
+        self.direct_set(speed=0, steering_angle=0)
+
+    def loop(self):
+        # pass
+        self.obstacles.viz()
+
+def make_flamegraph(filter=None):
+    import flamegraph
+    perf_log_path = os.path.join(os.path.dirname(__file__), "../tmp/perf.log")
+    flamegraph.start_profile_thread(fd=open(perf_log_path, "w"),
+                                    filter=r"compute_control",
+                                    interval=0.001)
 
 if __name__ == '__main__':
     # print(dynamics("steering_prediction"))
+
+    # make_flamegraph(r"compute_control")
+
     try:
         ChallengeController()
     except rospy.ROSInterruptException:

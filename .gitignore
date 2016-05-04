@@ -2,3 +2,7 @@
 *~
 \#*\#
 *.pyc
+*.so
+*.c
+local_costmap/scripts/build
+local_costmap/tmp
