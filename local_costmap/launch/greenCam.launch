@@ -1,10 +1,11 @@
 <launch>
+	<!-- load params from config file -->
+	<rosparam command="load" ns="local_costmap" file="$(find local_costmap)/config/config.yaml" />
+
 	<!-- Launches zed_wrapper, VGA resolution (1280x480) -->
-	<include file="$(find zed_wrapper)/launch/zed.launch">
-	<!-- <arg name="resolution" value="3"/> -->
-	</include>
+	<include file="$(find zed_wrapper)/launch/zed.launch"></include>
 
 	<!-- greenCam node -->
-	<node name="waypoint_detector" pkg="greenCam" type="greenCam.py" />
+	<node name="greenCam" pkg="local_costmap" type="greenCam.py" />
 
 </launch>
