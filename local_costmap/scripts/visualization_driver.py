@@ -1,5 +1,4 @@
 # provides helper functions for running high speed and quality visualizations
-
 import rospy
 import time
 from std_msgs.msg import Header, ColorRGBA, Float32
@@ -31,6 +30,8 @@ class VisualizationDriver(object):
         self.add_publisher("goals.walls", Marker)
         self.add_publisher("goals.imagined_wall", Marker)
         self.add_publisher("goals.corridors", Marker)
+
+        self.add_publisher("goals.green_goal", Marker)
 
         for k in self.channels.keys():
             self.last_pubs[k] = time.time()
@@ -232,3 +233,28 @@ class VisualizationDriver(object):
         marker.header.frame_id = "base_link";
         marker.action = 3 # DELETEALL action.
         return marker
+
+    def marker_from_green_goal(self, centroid, index=0, color=ColorRGBA(0,0,1,1), lifetime = 10.0):
+        marker = Marker()
+        marker.header = Header(stamp=rospy.Time.now(), frame_id="base_link")
+        marker.ns = "Markers_NS"
+        marker.id = index
+        marker.type = Marker.CUBE
+        marker.action = 0
+        marker.color = color
+        marker.lifetime = rospy.Duration.from_sec(lifetime)
+
+        marker.pose = Pose()
+        marker.pose.position.z = 0.0
+        marker.pose.position.x = centroid.x
+        marker.pose.position.y = centroid.y
+        return marker
+
+    def publish_green_goals(self, goals):
+        markers = [self.marker_clear_all]
+        markers += [self.marker_from_green_goal(goal,index=i,\
+         lifetime = 1./float(self.get_info("goals.green_goal")["rate_limit"]))for i,goal in enumerate(goals)]
+        marker_array = MarkerArray(markers=markers)
+        self.publish("goals.green_goal", marker_array)
+	return
+
