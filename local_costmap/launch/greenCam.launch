@@ -5,6 +5,6 @@
 	</include>
 
 	<!-- greenCam node -->
-	<node name="waypoint_detector" pkg="greenCam" type="greenCam.py" />
+	<node name="green_goal_detector" pkg="local_costmap" type="greenCam.py" />
 
 </launch>
