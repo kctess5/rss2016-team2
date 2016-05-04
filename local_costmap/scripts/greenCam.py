@@ -39,7 +39,7 @@ HSV_lower_thresh = tuple(param("greenCam.lower_thresh"))
 HSV_upper_thresh = tuple(param("greenCam.upper_thresh"))
 #HSV_upper_thresh = (130,255,255)
 #MIN_AREA_THRESH  = 200.
-MIN_AREA_THRESH = tuple(param("greenCam.min_area_thresh"))
+MIN_AREA_THRESH = param("greenCam.min_area_thresh")
 
 #row starts at 0 in center of ZED frame and increments when going down in the frame
 #col starts at 0 left of ZED frame, x is 0 in middle of frame
@@ -84,6 +84,7 @@ class greenCam:
 		self.sub = rospy.Subscriber('/camera/rgb/image_rect_color', Image, self.recv_image)
 		#self.pub_points = rospy.Publisher('/waypoint_markers', Polygon)
 		self.pub_green_goal = rospy.Publisher('/closest_green_goal', Point)
+		rospy.init_node('greenCam')
 	def recv_image(self, img):
 		try:
 			cv_image = self.bridge.imgmsg_to_cv2(data, "rgb8")
