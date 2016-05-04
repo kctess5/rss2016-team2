@@ -45,6 +45,9 @@ viz:
       imagined_wall:
         rate_limit: 5
         color: [0,1,1,1]
+      green_goal:
+        rate_limt: 5
+        color: [0,0,1,1]
     obstacles:
       inadmissible:
         rate_limit: 3
