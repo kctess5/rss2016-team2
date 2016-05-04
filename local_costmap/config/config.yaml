@@ -9,13 +9,20 @@
 # ---------------- #
 
 space_explorer: 
-  enabled: false
+  enabled: True
   overlap_percentage_goal: 0.15
   min_radius: 0.6
-  branch_factor: 16
+  branch_factor: 15
   max_distance: 15
   back_limit: -1.0
-  heuristic_bias: 1.3
+  heuristic_bias: 2.0
+  max_circle_size: 1.8
+  # the circle cost is a factor trigonometrically linked to
+  # deflection angle relative to parent, scaled by this factor
+  # too high and it plans bad paths, to low and excess jerk
+  deflection_coeff: 0.0
+  pursuit_radius: 1.2
+  time_limit: 0.15
 
 epsilon: 0.001
 
@@ -62,12 +69,15 @@ viz:
         rate_limit: 5
         color: [0,0,0,1]
       path:
-        rate_limit: 5
+        rate_limit: 10
+        color: [0,0,0,1]
+      center_path:
+        rate_limit: 10
         color: [0,0,0,1]
 
 
 # wheel_base: 0.27
-planning_freq: 5
+planning_freq: 20
 execution_freq: 12
 
 
@@ -78,6 +88,7 @@ runtime_specific:
     racecar_env: True
   not_racecar:
     scan_topic: "/scan_throttle"
+    # scan_topic: "/scan"
     visualize_level: 2
     racecar_env: False
 
@@ -93,7 +104,7 @@ obstacle_map:
   ymin: -8
   ymax: 8
   # minimum distance to nearest obstacle to be considered admissible
-  min_distance: 0.35
+  min_distance: 0.2
   # number of cells worth of spacing between admissibility check waypoints
   # higher is faster, but might result in jumping over obstacles
   admissible_hop: 2.0
@@ -123,7 +134,7 @@ navigator:
   same_wall_error_distance: 1.2
 
   # Take every x laser points, for speed
-  downsample_every: 2
+  downsample_every: 6
 
   # Whether to run the merge step. (0 or 1)
   enable_merge: 1

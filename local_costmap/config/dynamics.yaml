@@ -36,10 +36,10 @@ max_angular_velocity: 1.4
 
 # bounds on mechanical capabilities
 # 10mph ~= 4.47 m/s
-max_speed: 1.5
+max_speed: 2.5
 
 # min curve radius - used in the heuristic
-r_min: 1.2
+r_min: 0.8
 
 # these numbers have been optimized, don't change them
 max_deflection: 0.32 # DONT CHANGE

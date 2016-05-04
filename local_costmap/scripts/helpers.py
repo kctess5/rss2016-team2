@@ -20,7 +20,7 @@ AccelerationState = collections.namedtuple("AccelerationState",
     ["control_states", "steering_velocity", "linear_accel"])
 DynamicAccelerationState = collections.namedtuple("DynamicAccelerationState", 
     ["control_states", "steering_velocity", "linear_accel", "step_size", "integration_steps"])
-Circle = collections.namedtuple("Circle", ["radius", "x", "y"])
+Circle = collections.namedtuple("Circle", ["radius", "x", "y", "deflection"])
 CirclePathState = collections.namedtuple("CirclePathState", ["circle", "dist_goal"])
 
 Path  = collections.namedtuple("Path", ["states"])
@@ -30,6 +30,41 @@ StateRange = collections.namedtuple("StateRange", ["min", "max"])
 SearchNode = collections.namedtuple("SearchNode", ["state", "cost", "heuristic", "parent", "tree_node"])
 # used for recreating the search tree in visualization
 TreeNode = recordclass.recordclass("TreeNode", ["state", "children"])
+
+
+def circle_segment_intersection(circle, start_point, end_point):
+    start_point = np.array([start_point.x, start_point.y])
+    end_point = np.array([end_point.x, end_point.y])
+    circle_center = np.array([circle.x, circle.y])
+
+    d = end_point - start_point
+    f = start_point - circle_center
+
+    a = np.dot(d,d)
+    b = 2.0 * np.dot(f,d)
+    c = np.dot(f,f) - circle.radius * circle.radius
+
+    discriminant = b*b - 4.0*a*c
+    if discriminant < 0:
+        # no intersection
+        return None
+    else:
+        # ray didn't totally miss sphere,
+        # so there is a solution to
+        # the equation.
+        discriminant = np.sqrt(discriminant)
+
+        t1 = (-b - discriminant) / (2.0 * a)
+        t2 = (-b + discriminant) / (2.0 * a)
+
+        if t1 >= 0 and t1 <= 1:
+            p = d * t1 + start_point
+            return Point2D(x=p[0], y=p[1])
+        if t2 >= 0 and t2 <= 1:
+            p = d * t2 + start_point
+            return Point2D(x=p[0], y=p[1])
+        
+        return None
 
 # fetch the info from ros for a given dot separated path in the yaml config file
 def param(raw_name):
@@ -174,6 +209,40 @@ def collinear(s1, s2, angle_error, distance_error):
             if p1 != p2 and euclidean_distance(p1, p2) < distance_error:
                 return True
     return False
+
+class FPSCounter(object):
+    """docstring for FPSCounter"""
+    def __init__(self, enabled=True, size=10):
+        self.buffer = np.zeros(size)
+        self.index = 0
+        self.last_step = rospy.get_rostime().to_sec()
+        self.enabled = enabled
+
+    def step(self):
+        if self.enabled:
+            t = rospy.get_rostime().to_sec()
+            delta = t - self.last_step
+            self.last_step = t
+            self.buffer[self.index % len(self.buffer)] = delta
+            self.index += 1
+
+    def fps(self):
+        m = np.mean(self.buffer)
+        if m > 0:
+            fps = 1.0 / m
+        else:
+            fps = 30.0
+        
+        if fps < 2.0 or fps > 40.0:
+            fps = 30.0
+
+        return fps
+
+        # if m == 0:
+        #     return 0
+
+        # fps = 1.0 / m
+        # return round(float(self.count) / (rospy.get_rostime().to_sec() - self.start_time), 2)
 
 class FrameBuffer:
     # bins/meter, (meters), (meters)

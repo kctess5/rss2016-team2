@@ -18,6 +18,7 @@ class VisualizationDriver(object):
 
         self.add_publisher("space_explorer.explored", MarkerArray)
         self.add_publisher("space_explorer.path", MarkerArray)
+        self.add_publisher("space_explorer.center_path", Marker)
 
         self.add_publisher("path_search.best_path", Marker)
         self.add_publisher("path_search.complete_paths", MarkerArray)
@@ -193,6 +194,11 @@ class VisualizationDriver(object):
         
         marker_array = MarkerArray(markers=markers)
         self.publish("space_explorer.path", marker_array)
+
+    def publish_path_line(self, circle_path):
+        marker = self.marker_from_path(circle_path.states, z=0.1, linewidth=0.09, \
+            lifetime=1.0/float(self.get_info("space_explorer.center_path")["rate_limit"]))
+        self.publish("space_explorer.center_path", marker)
 
     def marker_from_path(self, states, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., lifetime=10.0):
         marker = Marker()
