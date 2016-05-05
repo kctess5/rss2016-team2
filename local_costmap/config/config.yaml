@@ -21,18 +21,18 @@ greenCam:
 space_explorer: 
   enabled: True
   overlap_percentage_goal: 0.15
-  min_radius: 0.6
+  min_radius: 0.3
   branch_factor: 15
-  max_distance: 15
+  max_distance: 12
   back_limit: -1.0
-  heuristic_bias: 2.0
+  heuristic_bias: 1.5
   max_circle_size: 1.8
   # the circle cost is a factor trigonometrically linked to
   # deflection angle relative to parent, scaled by this factor
   # too high and it plans bad paths, to low and excess jerk
-  deflection_coeff: 0.0
+  deflection_coeff: 0.1
   pursuit_radius: 1.2
-  time_limit: 0.15
+  time_limit: 0.1
 
 epsilon: 0.001
 
@@ -55,6 +55,8 @@ viz:
       green_goal:
         rate_limt: 5
         color: [0,0,1,1]
+      corridor_goal:
+        rate_limit: 15
     obstacles:
       inadmissible:
         rate_limit: 3
@@ -100,6 +102,7 @@ runtime_specific:
     visualize_level: 1
     racecar_env: True
   not_racecar:
+    # scan_topic: "/racecar/laser/scan"
     scan_topic: "/scan_throttle"
     # scan_topic: "/scan"
     visualize_level: 2
@@ -214,5 +217,21 @@ emergency:
   stop_path_steering_damp_factor: 1.0
 
   # backu
+
+navigator3:
+  downsample: 4
+  # widths are in percentages compared to size of data
+  gaussian_width: 0.15
+  median_width: 0.1
+  # minimum distance to consider a maxima a corridor
+  distance_threshold: 4
+  # min/max angles to be considered
+  goal_angle_bounds: [-1.57, 1.57]
+  # turns right if true, left otherwise
+  turn_right: True
+  # removes this percentages of scans
+  trim_percentage: 0.1
+  show_local_viz: False
+  laser_max: 7
 
 ...

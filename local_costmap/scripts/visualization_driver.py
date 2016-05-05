@@ -32,6 +32,7 @@ class VisualizationDriver(object):
         self.add_publisher("goals.corridors", Marker)
 
         self.add_publisher("goals.green_goal", Marker)
+        self.add_publisher("goals.corridor_goal", Marker)
 
         for k in self.channels.keys():
             self.last_pubs[k] = time.time()
@@ -148,7 +149,7 @@ class VisualizationDriver(object):
 
         return marker
 
-    def marker_from_state(self, state, color=ColorRGBA(1, 0, 0, 1)):
+    def marker_from_state(self, state, color=ColorRGBA(1, 0, 0, 1), lifetime=10.0):
         """ pose is (Point2D(x,y),heading) """
         marker = Marker()
         marker.header = Header(
@@ -157,7 +158,7 @@ class VisualizationDriver(object):
         marker.ns = "navigator"
         marker.id = 0
         marker.action = 0
-        marker.lifetime = rospy.Duration.from_sec(10.)
+        marker.lifetime = rospy.Duration.from_sec(lifetime)
         marker.points = []
         marker.type = Marker.ARROW
         marker.color = color
@@ -166,7 +167,7 @@ class VisualizationDriver(object):
         marker.pose.position.x = state.x
         marker.pose.position.y = state.y
         marker.pose.orientation = Quaternion(*tf.transformations.quaternion_from_euler(0,0,state.theta))
-        marker.scale = Vector3(.5, .1, .1)
+        marker.scale = Vector3(1, .3, .3)
         return marker
 
     def publish_test_goal(self, goal, color):
@@ -256,5 +257,12 @@ class VisualizationDriver(object):
          lifetime = 1./float(self.get_info("goals.green_goal")["rate_limit"]))for i,goal in enumerate(goals)]
         marker_array = MarkerArray(markers=markers)
         self.publish("goals.green_goal", marker_array)
-	return
+        return
+
+    def publish_corridor_goal(self, goal):
+        goal_state = State(x=goal[0], y=goal[1], theta=goal[2], steering_angle=None, speed=None)
+        # marker = self.marker_from_state(goal_state,
+        #     lifetime=1.0/float(self.get_info("goals.corridor_goal")["rate_limit"]))
+        marker = self.marker_from_state(goal_state)
+        self.publish("goals.corridor_goal", marker)
 

@@ -24,6 +24,7 @@ from profilehooks import profile, timecall
 from heapq import nsmallest
 from whoami import is_racecar
 import matplotlib.pyplot as plt
+from navigator3 import ScanMaximaNavigator
 
 # from shapely.geometry import Point as GeoPoint
 # from shapely.ops import union
@@ -410,7 +411,7 @@ class ObstacleMap(object):
         self.dirty = True
 
     def viz(self):
-        if not self.buffer.distmap == None:        
+        if not self.buffer.distmap == None and param("obstacle_map.vizualize_distmap"):        
             # dist = self.buffer.distmap
             # skel = gaussian_filter(dist, sigma=1)
             # skel = canny(skel)
@@ -432,18 +433,27 @@ class GoalManager(object):
     """
     def __init__(self, viz):
         self.navigator = navigator.Navigator(viz)
+        self.navigator3 = ScanMaximaNavigator(viz)
         self.origin = None
 
     def next_goal(self):
         """ Return the position of the next goal in local coordinates
                 - for now, this directly calls the corridor detector with no smoothing
         """
-        gp = self.navigator.goalpoint()
+        # gp = self.navigator.goalpoint()
+        gp = self.navigator3.goalpoint()
+        if gp == None:
+            return None
         return State(x=gp[0], y=gp[1], theta=gp[2], steering_angle=None, speed=None)
 
     def scan_callback(self, data):
-        self.navigator.laser_update(data)
-        self.navigator.visualize()
+        self.navigator3.scan_callback(data)
+        
+        # self.navigator.laser_update(data)
+        # self.navigator.visualize()
+
+    def viz(self):
+        self.navigator3.visualize()
 
 class HeuristicSearch(object):
     """ Perform heuristic search on the provided set of cost/admissibility/heuristic/neighbor functions """
@@ -473,6 +483,9 @@ class HeuristicSearch(object):
         heapq.heappush(self.frontier, (ss.heuristic, ss))
 
     def search(self, time_limit):
+        if self.goal_state == None:
+            return None
+        
         start_time = time.time()
 
         # extend nodes until the time limit is reached
@@ -842,6 +855,8 @@ class SpaceExploration(HeuristicSearch):
         return state.radius#*(1.0 + param("space_explorer.deflection_coeff")*abs(np.sin(state.deflection / 2.0)) )
     
     def heuristic(self, state, goal_state):
+        if goal_state == None:
+            return np.inf
         return (euclidean_distance(state,goal_state) - state.radius)*param("space_explorer.heuristic_bias")
     
     def overlap(self, s1, s2, percentage=.15):
@@ -853,6 +868,8 @@ class SpaceExploration(HeuristicSearch):
 
     def goal(self):
         g=self.goals.next_goal()
+        if g == None:
+            return None
         r = self.circle_radius(g)
         # if the goal is out of bounds it returns a very large value, fix that
         if r > 100:
@@ -966,10 +983,10 @@ class ChallengeController(DirectControlModule):
         control_thread.daemon = True
         control_thread.start()
 
-        if param("obstacle_map.vizualize_distmap"):
+        if param("obstacle_map.vizualize_distmap") or param("navigator3.show_local_viz"):
             while not rospy.is_shutdown():
                 self.loop()
-                rospy.sleep(0.4)
+                rospy.sleep(0.05)
 
     def test_control(self):
         if not self.test_started:
@@ -1154,6 +1171,12 @@ class ChallengeController(DirectControlModule):
             self.test_control()
             return 
 
+        if self.goals.next_goal() == None:
+            # stop if no goal point
+            next_path = self.make_stop_path(steering_angle=self.state_history[-1].steering_angle, num_segments=1)
+            self.execute_state(next_path.states[0])
+            return
+
         start_state = self.integrate_forward(param("space_explorer.time_limit"))
         # print(start_state)
         self.space_explorer.reset(start_state=start_state)
@@ -1261,6 +1284,7 @@ class ChallengeController(DirectControlModule):
     def loop(self):
         # pass
         self.obstacles.viz()
+        self.goals.viz()
 
 def make_flamegraph(filter=None):
     import flamegraph
