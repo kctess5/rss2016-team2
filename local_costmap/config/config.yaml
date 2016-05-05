@@ -13,8 +13,8 @@ greenCam:
   row2y: [323.9,.4321479,2.967,-46.14]
   row2width: [11450.0,.2874673,3.5e-16,-.07852111]
   min_area_thresh: 200.0
-  lower_thresh: [90,40,6]
-  upper_thresh: [130,255,255]
+  lower_thresh: [60,60,6]
+  upper_thresh: [80,255,255]
  
 
 
