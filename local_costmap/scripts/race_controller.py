@@ -1079,7 +1079,6 @@ class ChallengeController(DirectControlModule):
         else:
             return State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
 
-
     def _control_loop(self):
         while True:
             if self.new_data:

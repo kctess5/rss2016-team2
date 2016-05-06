@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+#
+# http://devosaurus.blogspot.com/2013/10/exploring-b-splines-in-python.html
 
 import numpy as np
 import matplotlib.pyplot as plt

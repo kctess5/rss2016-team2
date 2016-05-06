@@ -6,6 +6,7 @@ import numpy as np
 from helpers import *
 from scipy import signal
 import matplotlib.pyplot as plt
+import threading
 
 
 class DynamicPlot():
@@ -68,12 +69,13 @@ class ScanMaximaNavigator(object):
 		self.peaks = None
 		self.picked_peak = None
 
+		self.lock = threading.Lock()
+
 		if param("navigator3.show_local_viz"):
 			self.local_viz = DynamicPlot()
 			self.local_viz.initialize()
 
 	def scan_callback(self, laser):
-
 		# filter the laser data to only include a subset of useful data
 		num_scans = len(laser.ranges)
 		trim_length = int(num_scans * param("navigator3.trim_percentage"))
@@ -83,12 +85,36 @@ class ScanMaximaNavigator(object):
 		angles = (np.arange(ranges.shape[0]) * laser.angle_increment) \
 				 + laser.angle_min + laser.angle_increment * trim_length
 
+		bad_indices = np.where(ranges > param("navigator3.error_range"))[0]
+		obviously_good_indices = np.where(ranges < param("navigator3.error_range"))[0]
+
+		contiguous_min = param("navigator3.contiguous_min")
+		good_indices = []
+		num_contiguous = 0
+		last_index = -1
+		for i in bad_indices:
+			if i - last_index == 1:
+				num_contiguous += 1
+			else:
+				num_contiguous = 0
+
+			if num_contiguous > contiguous_min:
+				good_indices.append(i)
+			if num_contiguous == contiguous_min:
+				# print(num_contiguous, list(np.arange(i - num_contiguous+1, i+1, 1)))
+				good_indices = good_indices + list(np.arange(i-num_contiguous+2, i+1, 1))
+			last_index = i
+
+		good_indices = np.array(sorted(list(obviously_good_indices) + good_indices))
+
+		ranges = ranges[good_indices]
+		angles = angles[good_indices]
+
 		less_ranges = ranges[::param("navigator3.downsample")]
 		less_angles = angles[::param("navigator3.downsample")]
 
-		less_ranges[less_ranges < laser.range_min] = laser.range_min
-		less_ranges[less_ranges > param("navigator3.laser_max")] = param("navigator3.laser_max")
-		
+		less_ranges[less_ranges > param("navigator3.error_range")] = 8
+
 		if self.window == None:
 			# only compute these constants once
 			self.gaussian_filter_width = int(param("navigator3.gaussian_width") * less_ranges.shape[0])
@@ -100,23 +126,16 @@ class ScanMaximaNavigator(object):
 			win = signal.hann(self.gaussian_filter_width)
 			self.window = win / np.sum(win)
 
-			self.laser_steps_per_radian = less_angles.shape[0] / (less_angles[-1] - less_angles[0])
-
 		median_ranges = signal.medfilt(less_ranges, self.median_filter_width)
 		smoothed_ranges = signal.convolve(median_ranges, self.window, mode='same')
 
 		self.find_corridor(smoothed_ranges, less_angles)
-
-		if self.local_viz:
-			self.angles = less_angles
-			self.filtered_ranges = smoothed_ranges
 
 	def goalpoint(self):
 		return self.goal_point
 
 	def find_corridor(self, filtered_ranges, angles):
 		# given prefiltered scanner data, find corridors by finding local maxima
-		
 		peaks = signal.argrelextrema(filtered_ranges, np.greater_equal)[0]
 
 		angle_bounds = param("navigator3.goal_angle_bounds")
@@ -140,29 +159,33 @@ class ScanMaximaNavigator(object):
 		self.goal_point = (point[0], point[1], angles[picked_peak])
 
 		if self.local_viz:
-			self.peaks = peaks
-			self.picked_peak = picked_peak
+			with self.lock:
+				self.peaks = peaks
+				self.picked_peak = picked_peak
+				self.angles = angles
+				self.filtered_ranges = filtered_ranges
 
 
 	def visualize(self):
-		if self.local_viz and not self.angles == None:
-			self.local_viz.laser_filtered.set_data(self.angles, self.filtered_ranges)
-			if (self.peaks.shape[0] > 1):
-				self.local_viz.laser_maxima.set_data(self.angles[self.peaks], \
-					self.filtered_ranges[self.peaks])
-			else:
-				self.local_viz.laser_maxima.set_data([], [])
+		with self.lock:
+			if self.local_viz and not self.angles == None:
+				self.local_viz.laser_filtered.set_data(self.angles, self.filtered_ranges)
+				if (not self.peaks == None and self.peaks.shape[0] > 1):
+					self.local_viz.laser_maxima.set_data(self.angles[self.peaks], \
+						self.filtered_ranges[self.peaks])
+				else:
+					self.local_viz.laser_maxima.set_data([], [])
 
-			if not self.picked_peak == None:	
-				chosen_angle = self.angles[self.picked_peak]
-				chosen_range = self.filtered_ranges[self.picked_peak]
+				if not self.picked_peak == None:	
+					chosen_angle = self.angles[self.picked_peak]
+					chosen_range = self.filtered_ranges[self.picked_peak]
 
-				self.local_viz.desired_heading_point.set_data(chosen_angle, chosen_range)
-				tip_len = 2.5
-				self.local_viz.desired_heading_angle.set_data([0, tip_len * np.cos(chosen_angle) ],[0, tip_len * np.sin(chosen_angle)])
+					self.local_viz.desired_heading_point.set_data(chosen_angle, chosen_range)
+					tip_len = 2.5
+					self.local_viz.desired_heading_angle.set_data([0, tip_len * np.cos(chosen_angle) ],[0, tip_len * np.sin(chosen_angle)])
 
-				if self.viz.should_visualize("goals.corridor_goal") and self.goal_point:
-					self.viz.publish_corridor_goal(self.goal_point)
+					if self.viz.should_visualize("goals.corridor_goal") and self.goal_point:
+						self.viz.publish_corridor_goal(self.goal_point)
 
-			self.local_viz.redraw()
+				self.local_viz.redraw()
 
