@@ -972,6 +972,8 @@ class ChallengeController(DirectControlModule):
 
         self.execution_time_estimate = 1.0 / 25.0
 
+        self.lookahead_circle = None
+
         # self.search_time_limit = 1.0/float(param("planning_freq"))
         self.computing_control = False
         self.since_scan_recieved = []
@@ -1115,22 +1117,20 @@ class ChallengeController(DirectControlModule):
         if circle_path == None:
             return None
 
-        max_deflection = 0
-        for i in xrange(1,len(circle_path.states)):
-            if circle_path.states[i].deflection > max_deflection:
-                max_deflection = circle_path.states[i].deflection
-
-        # print(np.cos(max_deflection))
-        # L
+        deflections = map(lambda x: abs(x.deflection), circle_path.states)
+        max_deflection = max(deflections)
 
         # dt = rospy.get_rostime().to_sec() - self.scan_time
         # print(dt)
         start_state = circle_path.states[0]
         # start_state = self.integrate_forward(dt)
         #TODO: modify this depending on path curvature
-        L = param("space_explorer.pursuit_radius")*np.cos(max_deflection)
-        print(L)
+        L = param("space_explorer.max_pursuit_radius")*np.cos(max_deflection)
+        L = max(L, param("space_explorer.min_pursuit_radius"))
+        # print(L, max_deflection, np.cos(max_deflection))
         pursuit_circle = Circle(radius=L, x=start_state.x, y=start_state.y, deflection=0)
+
+        self.lookahead_circle = pursuit_circle
 
         # if not spline_path == None:
         #     # print("test")
@@ -1236,6 +1236,9 @@ class ChallengeController(DirectControlModule):
 
         if self.viz.should_visualize("space_explorer.center_path") and self.space_explorer.best():
             self.viz.publish_path_line(circle_path)
+
+        if self.viz.should_visualize("path_search.lookahead_circle") and self.lookahead_circle:
+            self.viz.publish_lookahead_circle(self.lookahead_circle)
 
         if next_control_state == None:
             # commit emergency plan

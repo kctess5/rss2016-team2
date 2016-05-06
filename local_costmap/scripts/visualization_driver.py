@@ -27,6 +27,7 @@ class VisualizationDriver(object):
         self.add_publisher("path_search.speed", Float32)
         self.add_publisher("path_search.steering", Float32)
         self.add_publisher("path_search.test_goal", Marker)
+        self.add_publisher("path_search.lookahead_circle", Marker)
 
         self.add_publisher("goals.next_goal", Marker)
         self.add_publisher("goals.walls", Marker)
@@ -233,6 +234,11 @@ class VisualizationDriver(object):
         
         marker_array = MarkerArray(markers=markers)
         self.publish("space_explorer.path", marker_array)
+
+    def publish_lookahead_circle(self, circle):
+        marker = self.marker_from_circle(circle, z=-.1,linewidth=0.05, color=ColorRGBA(0, 1, 0, 0.6), \
+                    lifetime=1.0/float(self.get_info("path_search.lookahead_circle")["rate_limit"]))
+        self.publish("path_search.lookahead_circle", marker)
 
     def publish_path_line(self, circle_path):
         marker = self.marker_from_path(circle_path.states, z=0.1, linewidth=0.09, color=ColorRGBA(1, 0, 0, .7),  \

@@ -39,7 +39,7 @@ max_angular_velocity: 1.4
 max_speed: 4.0
 
 # min curve radius - used in the heuristic
-r_min: 0.9
+r_min: 0.8
 
 # these numbers have been optimized, don't change them
 max_deflection: 0.32 # DONT CHANGE
