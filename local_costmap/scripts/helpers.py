@@ -31,6 +31,43 @@ SearchNode = collections.namedtuple("SearchNode", ["state", "cost", "heuristic",
 # used for recreating the search tree in visualization
 TreeNode = recordclass.recordclass("TreeNode", ["state", "children"])
 
+def spline_circle_intersection(circle, spline):
+    # find upper bound on t for binary search
+    L = circle.radius
+    t_min = spline.min
+    t_max = spline.max
+
+    def binary_search(low, high, func, count=0):
+        # count += 1
+        check = (high + low) / 2.0
+        val = func(check)
+        if abs(val) < 0.01:
+            return check
+        elif abs(low-high) < 0.0001:
+            return None
+        elif val < 0:
+            return binary_search(low, check, func, count)
+        elif val > 0:
+            return binary_search(check, high, func, count)
+
+    def path_dist2(t):
+        p = spline(t)
+        return L - math.sqrt(p[0]*p[0]+p[1]*p[1])
+
+    intersection = binary_search(t_min, t_max, path_dist2)
+    if intersection == None:
+        return None
+    else:
+        p = spline(intersection)
+        return Point2D(x=p[0], y=p[1])
+    # print(count)
+    # if intersection:
+    #     p = spline(intersection)
+    #     print(intersection, p, math.sqrt(p[0]*p[0]+p[1]*p[1]))
+    #     print(path_dist2(intersection))
+    
+    # print("test", t_max, spline(t), intersection)
+
 
 def circle_segment_intersection(circle, start_point, end_point):
     start_point = np.array([start_point.x, start_point.y])
@@ -120,6 +157,7 @@ def distance2(p1, p2):
     dx = p1.x - p2.x
     dy = p1.y - p2.y
     return dx*dx+dy*dy
+
 
 def euclidean_distance(p1, p2):
     return math.sqrt(distance2(p1, p2))

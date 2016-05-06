@@ -7,6 +7,7 @@ from geometry_msgs.msg import Point, Pose, Vector3, Quaternion
 import math
 from helpers import param, State, AccelerationState, Path, StateRange, SearchNode, TreeNode
 import tf.transformations
+import numpy as np
 
 class VisualizationDriver(object):
     """ The class responsible for visualizing the cars algorithms"""
@@ -19,6 +20,7 @@ class VisualizationDriver(object):
         self.add_publisher("space_explorer.path", MarkerArray)
         self.add_publisher("space_explorer.center_path", Marker)
 
+        self.add_publisher("path_search.curve_path", Marker)
         self.add_publisher("path_search.best_path", Marker)
         self.add_publisher("path_search.complete_paths", MarkerArray)
         self.add_publisher("path_search.viable_paths", MarkerArray)
@@ -67,6 +69,41 @@ class VisualizationDriver(object):
     def publish(self, name, msg):
         self.last_pubs[name] = time.time()
         self.channels[name].publish(msg)
+
+    def publish_path_curve(self, curve):
+        marker = self.marker_from_curve(curve, z=0.1, linewidth=0.09, color=ColorRGBA(0, 1, 1, 1), \
+            lifetime=1.0/float(self.get_info("path_search.curve_path")["rate_limit"]))
+        self.publish("path_search.curve_path", marker)
+
+    def marker_from_curve(self, curve, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., lifetime=10.0):
+        marker = Marker()
+        marker.header = Header(
+            stamp=rospy.Time.now(),
+            frame_id="base_link")
+
+        marker.ns = "Markers_NS"
+        marker.id = index
+        marker.type = Marker.LINE_STRIP
+        marker.action = 0 # action=0 add/modify object
+        marker.color = color
+        marker.lifetime = rospy.Duration.from_sec(lifetime)
+
+        marker.pose = Pose()
+        marker.pose.position.z = z
+        marker.scale = Vector3(linewidth, 1, 1)
+
+        # Fill the marker from the path.
+        sampling = [t for t in np.linspace(curve.min, curve.max, 50, endpoint=curve.endpoint)]
+        curvepts = [ curve(s) for s in sampling ]
+
+        points = []
+        for i in curvepts:
+            points.append(Point(float(i[0]), float(i[1]), 0))
+
+        marker.points = points
+        marker.colors = []
+
+        return marker
 
     def publish_best_path(self, best_path):
         marker = self.marker_from_path(best_path.states, z=0.1, linewidth=0.09, \
@@ -198,7 +235,7 @@ class VisualizationDriver(object):
         self.publish("space_explorer.path", marker_array)
 
     def publish_path_line(self, circle_path):
-        marker = self.marker_from_path(circle_path.states, z=0.1, linewidth=0.09, \
+        marker = self.marker_from_path(circle_path.states, z=0.1, linewidth=0.09, color=ColorRGBA(1, 0, 0, .7),  \
             lifetime=1.0/float(self.get_info("space_explorer.center_path")["rate_limit"]))
         self.publish("space_explorer.center_path", marker)
 

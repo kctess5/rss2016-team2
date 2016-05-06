@@ -14,7 +14,7 @@ from std_msgs.msg import ColorRGBA
 import navigator2 as navigator
 from visualization_driver import VisualizationDriver
 from helpers import param, euclidean_distance, FrameBuffer, polar_to_euclid
-from helpers import State, AccelerationState, Circle, CirclePathState, Path, StateRange, SearchNode, TreeNode, FPSCounter, circle_segment_intersection
+from helpers import State, AccelerationState, Circle, CirclePathState, Path, StateRange, SearchNode, TreeNode, FPSCounter, circle_segment_intersection, spline_circle_intersection
 from helpers import Point2D as Point
 from pathlib import arc_step, ackerman_radius
 from pathlib2 import arc_step_fast
@@ -25,6 +25,7 @@ from heapq import nsmallest
 from whoami import is_racecar
 import matplotlib.pyplot as plt
 from navigator3 import ScanMaximaNavigator
+from curve_lib import C_factory
 
 # from shapely.geometry import Point as GeoPoint
 # from shapely.ops import union
@@ -287,7 +288,7 @@ class DynamicModel(object):
         if turning_radius > 5:
             return param("dynamics.max_speed")
         x = turning_radius
-        curve = -0.14*x*x + 1.38*x +1.151
+        curve = (-0.14*x*x + 1.38*x +1.151 ) * param("planner.speed_safety")
         return min(param("dynamics.max_speed"), curve)
 
     def dubins_time(self, q0, q1, turning_radii):
@@ -834,6 +835,9 @@ class SpaceExploration(HeuristicSearch):
         # cache reused values
         step = math.pi * 2.0 / param("space_explorer.branch_factor")
         self.thetas = np.linspace(0, math.pi * 2.0 - step, num=param("space_explorer.branch_factor"))
+        # self.thetas = [0.5]
+        bounds = param("space_explorer.sampling_bounds_initial")
+        self.initial_thetas = np.linspace(bounds[0], bounds[1], num=param("space_explorer.branch_factor"))
         # self.thetas = [6.27]
         self.radii = np.empty(param("space_explorer.branch_factor"))
         
@@ -851,7 +855,8 @@ class SpaceExploration(HeuristicSearch):
         super(SpaceExploration, self).reset(start_state)
 
     def cost(self, state):
-        # print(state.deflection, abs(np.sin(state.deflection / 2.0)))
+        if state.radius < param("space_explorer.min_radius"):
+            return state.radius * param("space_explorer.soft_limit_penalty")
         return state.radius#*(1.0 + param("space_explorer.deflection_coeff")*abs(np.sin(state.deflection / 2.0)) )
     
     def heuristic(self, state, goal_state):
@@ -913,7 +918,12 @@ class SpaceExploration(HeuristicSearch):
 
     def neighbors(self, state):
         self.radii.fill(state.radius)
-        xs, ys = polar_to_euclid(self.thetas, self.radii)
+        if state == self.tree_root.state:
+            thetas = self.initial_thetas
+        else:
+            thetas = self.thetas
+        
+        xs, ys = polar_to_euclid(thetas, self.radii)
 
         def deflection(angle):
             if angle > math.pi:
@@ -924,16 +934,12 @@ class SpaceExploration(HeuristicSearch):
             x=state.x+x[0], y=state.y+x[1],  \
             radius=self.circle_radius(Point(x=state.x+x[0], y=state.y+x[1])), \
             deflection=deflection(x[2])),
-                zip(xs,ys, self.thetas))
+                zip(xs,ys, thetas))
 
-        # print()
-        # print(len(neighbors))
+        # use the hard constraint here
+        potential_neighbors = filter(lambda x: x.radius > param("space_explorer.hard_min_radius"), neighbors)
 
-        neighbors = filter(lambda x: x.radius > param("space_explorer.min_radius"), neighbors)
-
-        # print(len(neighbors))
-
-        return neighbors
+        return potential_neighbors
 
     def best(self):
         if len(self.found_paths) > 0:
@@ -1073,6 +1079,7 @@ class ChallengeController(DirectControlModule):
         else:
             return State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
 
+
     def _control_loop(self):
         while True:
             if self.new_data:
@@ -1085,9 +1092,6 @@ class ChallengeController(DirectControlModule):
                 self.goals.scan_callback(self.scanner_data)
                 # compute control actions
                 self.compute_control()
-
-                # if self.space_explorer.step_count > 50:
-                #     print("extended:", self.space_explorer.step_count)
 
                 # house keeping
                 self.control_monitor.step()
@@ -1117,20 +1121,26 @@ class ChallengeController(DirectControlModule):
 
         return (min_speed, max_speed)
 
-    def pure_pursuit_control(self, circle_path):
+    def pure_pursuit_control(self, circle_path, spline_path=None):
         if circle_path == None:
             return None
 
         start_state = circle_path.states[0]
+        #TODO: modify this depending on path curvature
         L = param("space_explorer.pursuit_radius")
         pursuit_circle = Circle(radius=L, x=start_state.x, y=start_state.y, deflection=0)
-        
-        # find intersection between the pure pursuit circle and the path
-        intersection = None
-        for i in xrange(1,len(circle_path.states)):
-            intersection = circle_segment_intersection(pursuit_circle, circle_path.states[i-1], circle_path.states[i])
-            if not intersection == None:
-                break
+
+        if not spline_path == None:
+            # print("test")
+            intersection = spline_circle_intersection(pursuit_circle, spline_path)
+        else:
+        # if intersection == None:
+            # find intersection between the pure pursuit circle and the path
+            intersection = None
+            for i in xrange(1,len(circle_path.states)):
+                intersection = circle_segment_intersection(pursuit_circle, circle_path.states[i-1], circle_path.states[i])
+                if not intersection == None:
+                    break
 
         if intersection == None:
             return None
@@ -1154,13 +1164,14 @@ class ChallengeController(DirectControlModule):
         speed = DYNAMICS.max_speed_at_turning_radius(abs(arc_radius))
         speed = np.clip(speed, max(0.0, bounds[0]), bounds[1])
 
-        # print(speed)
-
         # steering = DYNAMICS.steering_angle(target_arc_radius=arc_radius, target_speed=speed)
         steering_angle = np.arctan2(param("dynamics.wheelbase"), arc_radius) * np.sign(local_intersection[1])
 
+        # print(round(steering_angle,2), round(speed,2))
+
         return State(x=0,y=0,theta=0,steering_angle=steering_angle,speed=speed)
 
+    @profile(sort="cumtime")
     def compute_control(self, event=None):
         if not self.obstacles.first_laser_recieved:
             print("Waiting for laser data...")
@@ -1177,13 +1188,40 @@ class ChallengeController(DirectControlModule):
             self.execute_state(next_path.states[0])
             return
 
+        def parameterize_path(circle_path):
+            # create a parametric curve approximating the control points
+            if circle_path == None:
+                return None
+            # finds the cubic bezier spline described by the circle path
+            n = 3 # order of the curve
+            control_points = map(lambda x: (x.x, x.y), reversed(circle_path.states))
+            len_orig = len(control_points)
+
+            if param("planner.prune_distance") > 0:
+                
+                last = circle_path.states[-1]
+                downsampled_control = []
+                for i in circle_path.states:
+                    if euclidean_distance(last, i) > param("planner.prune_distance") \
+                    or abs(i.deflection) > param("planner.max_prune_deflection"):
+                        downsampled_control.append((i.x, i.y))
+                        last = i
+                control_points = downsampled_control
+
+            return C_factory(control_points, n)
+
+        #TODO use FPS instead
         start_state = self.integrate_forward(param("space_explorer.time_limit"))
-        # print(start_state)
         self.space_explorer.reset(start_state=start_state)
+
         t = self.space_explorer.search(time_limit=param("space_explorer.time_limit"))
 
         circle_path = self.space_explorer.best()
-        next_control_state = self.pure_pursuit_control(circle_path)
+        spline_path = parameterize_path(circle_path)
+        next_control_state = self.pure_pursuit_control(circle_path, spline_path)
+
+        if self.viz.should_visualize("path_search.curve_path") and not spline_path == None:
+            self.viz.publish_path_curve(spline_path)
 
         if self.viz.should_visualize("space_explorer.explored"):
             self.viz.publish_exploration_circles(self.space_explorer.tree_root)
@@ -1294,10 +1332,10 @@ def make_flamegraph(filter=None):
                                     interval=0.001)
 
 if __name__ == '__main__':
-    a=Point(x=0,y=0)
-    b=Point(x=2,y=2)
-    c = Circle(x=0,y=0,radius=0.5,deflection=0)
-    print("intersects", circle_segment_intersection(c, a,b))
+    # a=Point(x=0,y=0)
+    # b=Point(x=2,y=2)
+    # c = Circle(x=0,y=0,radius=0.5,deflection=0)
+    # print("intersects", circle_segment_intersection(c, a,b))
     # print(dynamics("steering_prediction"))
 
     # make_flamegraph(r"compute_control")
