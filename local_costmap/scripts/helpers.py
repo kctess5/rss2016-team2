@@ -52,7 +52,9 @@ def spline_circle_intersection(circle, spline):
 
     def path_dist2(t):
         p = spline(t)
-        return L - math.sqrt(p[0]*p[0]+p[1]*p[1])
+        x_diff = p[0] - circle.x
+        y_diff = p[1] - circle.y
+        return L - math.sqrt(x_diff*x_diff+y_diff*y_diff)
 
     intersection = binary_search(t_min, t_max, path_dist2)
     if intersection == None:

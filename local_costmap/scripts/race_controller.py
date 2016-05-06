@@ -245,6 +245,15 @@ class DynamicModel(object):
         return State(x=propagated[0], y=propagated[1], theta=propagated[2], \
             steering_angle=state.steering_angle, speed=state.speed)
 
+    def propagate_time(self, state, t=1.0):
+        """ Gives an estimate for the final pose after assuming a given state after a given time. t=1 is time time of the next control timestep
+        """
+        effective_radius = self.estimate_effective_arc(state)
+            
+        propagated = arc_step_fast(effective_radius, t * state.speed, state.x, state.y, state.theta)
+        return State(x=propagated[0], y=propagated[1], theta=propagated[2], \
+            steering_angle=state.steering_angle, speed=state.speed)
+
     def propagate_accel(self, start_state, linear_accel, steering_velocity, num_segments):
         # NOTE: this function returns a list that DOES NOT include the given start state as 
         # it is assumed to be the last state in the previous path segment
@@ -961,6 +970,8 @@ class ChallengeController(DirectControlModule):
         self.control_monitor = FPSCounter(True)
         self.execution_monitor = FPSCounter(False)
 
+        self.execution_time_estimate = 1.0 / 25.0
+
         # self.search_time_limit = 1.0/float(param("planning_freq"))
         self.computing_control = False
         self.since_scan_recieved = []
@@ -1033,13 +1044,15 @@ class ChallengeController(DirectControlModule):
                 # self.viz.publish_viable_accel_paths(self.path_planner.tree_root)
 
     def optimize_time_limit(self):
+
+        self.execution_time_estimate = 1.0 / self.control_monitor.fps()
         # this function will decrease the search time limit if the planning is taking too long
         # otherwise it decrease 
         # place reasonable bounds on the time to prevent crazy results
-        max_time = 1.2/float(param("planning_freq"))
-        min_time = 1.0/float(param("planning_freq"))
+        # max_time = 1.2/float(param("planning_freq"))
+        # min_time = 1.0/float(param("planning_freq"))
 
-        percentage_slower_than_goal = (float(param("planning_freq")) - self.planning_fps())/float(param("planning_freq")) 
+        # percentage_slower_than_goal = (float(param("planning_freq")) - self.planning_fps())/float(param("planning_freq")) 
         # self.search_time_limit = np.clip(self.search_time_limit * (1.0 - percentage_slower_than_goal), min_time, max_time)
 
         # update the expected number of steps per plan interval so that the emergency planners
@@ -1048,36 +1061,12 @@ class ChallengeController(DirectControlModule):
 
     def integrate_forward(self, time_delta):
         # TODO fix this to actually integrate forward, given the controller fps 
-
-        return State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
-        # returns an estimate of where the car will be at the given time offset from now
-        # in the frame of the latest scan data
-        path_segments_executed = time_delta * float(param("execution_freq"))
-        num_executed = int(math.floor(path_segments_executed))
-        # print(num_executed)
-        # the index of the control state that will be executed right before the desired
-        # time is the current state index + number of expected
-        leftover = path_segments_executed % 1.0
-
-        control_steps = map(lambda x: (x.steering_angle, x.speed), self.since_scan_recieved)
         
-        if self.current_path:
-            future = self.current_path.states[self.state_index:self.state_index + num_executed]
-            control_steps += map(lambda x: (x.steering_angle, x.speed), future)
-        else:
-            print("NO PATH")
+        start_state = State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+        # start_state = DYNAMICS.propagate_time(start_state, time_delta)
+        # print(start_state.x, start_state.y)
 
-        ls = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
-        next_state = None
-        for i in control_steps:
-            next_state = State(x=ls.x, y=ls.y, theta=ls.theta, steering_angle=i[0], speed=i[1])
-            next_state = DYNAMICS.propagate(next_state)
-            ls = next_state
-
-        if next_state:
-            return next_state
-        else:
-            return State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+        return start_state
 
     def _control_loop(self):
         while True:
@@ -1085,7 +1074,9 @@ class ChallengeController(DirectControlModule):
                 self.computing_control = True
                 if self.control_monitor.index % 10 == 1:
                     print ("planning fps: ", self.control_monitor.fps())
+                    self.optimize_time_limit()
 
+                self.scan_time = self.scanner_data.header.stamp.to_sec()
                 # update data sources
                 self.obstacles.scan_callback(self.scanner_data)
                 self.goals.scan_callback(self.scanner_data)
@@ -1124,22 +1115,34 @@ class ChallengeController(DirectControlModule):
         if circle_path == None:
             return None
 
+        max_deflection = 0
+        for i in xrange(1,len(circle_path.states)):
+            if circle_path.states[i].deflection > max_deflection:
+                max_deflection = circle_path.states[i].deflection
+
+        # print(np.cos(max_deflection))
+        # L
+
+        # dt = rospy.get_rostime().to_sec() - self.scan_time
+        # print(dt)
         start_state = circle_path.states[0]
+        # start_state = self.integrate_forward(dt)
         #TODO: modify this depending on path curvature
-        L = param("space_explorer.pursuit_radius")
+        L = param("space_explorer.pursuit_radius")*np.cos(max_deflection)
+        print(L)
         pursuit_circle = Circle(radius=L, x=start_state.x, y=start_state.y, deflection=0)
 
-        if not spline_path == None:
-            # print("test")
-            intersection = spline_circle_intersection(pursuit_circle, spline_path)
-        else:
+        # if not spline_path == None:
+        #     # print("test")
+        #     intersection = spline_circle_intersection(pursuit_circle, spline_path)
+        # else:
         # if intersection == None:
             # find intersection between the pure pursuit circle and the path
-            intersection = None
-            for i in xrange(1,len(circle_path.states)):
-                intersection = circle_segment_intersection(pursuit_circle, circle_path.states[i-1], circle_path.states[i])
-                if not intersection == None:
-                    break
+        intersection = None
+        for i in xrange(1,len(circle_path.states)):
+            intersection = circle_segment_intersection(pursuit_circle, circle_path.states[i-1], circle_path.states[i])
+            if not intersection == None:
+                break
 
         if intersection == None:
             return None
@@ -1210,7 +1213,10 @@ class ChallengeController(DirectControlModule):
             return C_factory(control_points, n)
 
         #TODO use FPS instead
-        start_state = self.integrate_forward(param("space_explorer.time_limit"))
+        dt = rospy.get_rostime().to_sec() - self.scan_time
+        start_state = self.integrate_forward(dt)
+        # print(start_state.x, start_state.y)
+        # start_state = State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
         self.space_explorer.reset(start_state=start_state)
 
         t = self.space_explorer.search(time_limit=param("space_explorer.time_limit"))

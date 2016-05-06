@@ -19,21 +19,21 @@ greenCam:
 space_explorer: 
   enabled: True
   overlap_percentage_goal: 0.15
-  min_radius: 0.9
+  min_radius: 0.6
   # if the first constraint is too severe, use this instead
-  hard_min_radius: 0.35
+  hard_min_radius: 0.34
   # multiplicative penalty factor for being lower than the min_radius
   soft_limit_penalty: 1.7
   branch_factor: 15
   max_distance: 12
   back_limit: -1.0
   heuristic_bias: 1.4
-  max_circle_size: 1.8
+  max_circle_size: 2.0
   # the circle cost is a factor trigonometrically linked to
   # deflection angle relative to parent, scaled by this factor
   # too high and it plans bad paths, to low and excess jerk
   deflection_coeff: 0.0
-  pursuit_radius: 1.2
+  pursuit_radius: 2.0
   time_limit: 0.15
   sampling_bounds_initial: [-1.4,1.4]
 
@@ -104,7 +104,7 @@ execution_freq: 12
 
 runtime_specific:
   racecar:
-    scan_topic: "/scan_throttle"
+    scan_topic: "/scan"
     visualize_level: 1
     racecar_env: True
   not_racecar:
@@ -126,7 +126,7 @@ obstacle_map:
   ymin: -8
   ymax: 8
   # minimum distance to nearest obstacle to be considered admissible
-  min_distance: 0.2
+  min_distance: 0.1
   # number of cells worth of spacing between admissibility check waypoints
   # higher is faster, but might result in jumping over obstacles
   admissible_hop: 2.0
@@ -167,8 +167,8 @@ navigator:
 # --------------------- #
 
 planner:
-  max_prune_deflection: 0.4
-  prune_distance: 0.8
+  max_prune_deflection: 0.2
+  prune_distance: 0.0
   # number of angle settings to consider at each speed
   # the real number of candidate paths will be twice this
   # number because it will consider both min/max speed settings
@@ -233,18 +233,18 @@ navigator3:
   downsample: 4
   # widths are in percentages compared to size of data
   gaussian_width: 0.15
-  median_width: 0.1
+  median_width: 0.17
   # minimum distance to consider a maxima a corridor
-  distance_threshold: 3.5
+  distance_threshold: 3.7
   # min/max angles to be considered
-  goal_angle_bounds: [-1.57, 1.57]
+  goal_angle_bounds: [-0.9, 0.9]
   # turns right if true, left otherwise
   turn_right: True
   # removes this percentages of scans
   trim_percentage: 0.1
-  show_local_viz: True
+  show_local_viz: False
   laser_max: 3
   error_range: 60
-  contiguous_min: 50
+  contiguous_min: 30
 
 ...
