@@ -442,7 +442,7 @@ class GoalManager(object):
             - This should wrap the corridor detector and the vision based goal detection
     """
 
-    def __init__(self, viz, pass_rad=0.1, locality_rad=100, max_pts=5):
+    def __init__(self, viz, pass_rad=0.25, locality_rad=100, max_pts=5):
         """ Tunable parameters are kwargs above:
                 - pass_rad = the radius threshold around the car for which a goal point
                     is considered "passed"
@@ -503,17 +503,16 @@ class GoalManager(object):
             return None
 
         # Prune out all passed points TODO: should this go before matching?
-        # self.check_passed()
+        self.check_passed()
 
         # Sort the individual goal point management lists
         # self.sort_gpls()
 
         # For now, always prioritize green patches
-        ordered_gps = self.green_gps + self.corr_gps # This should be fast, but if not
-                                                     # keep a static array for this
-        target_x, target_y, target_orient = ordered_gps[0]
-        # next_x, next_y, next_orient = target_x, target_y, target_orient if len(ordered_gps) < 2 else ordered_gps[1]
-        # dx, dy = (next_x-target_x, next_y-target_y)
+        if len(self.green_gps) > 0:
+            target_x, target_y, _ = self.green_gps[0]
+        else:
+            target_x, target_y, _ = self.corr_gps[0]
 
         # Publish target coordinates with direction of next goal point
         return State(x=target_x, y=target_y, theta=0, steering_angle=None, speed=None)
@@ -521,10 +520,15 @@ class GoalManager(object):
     def check_passed(self):
         """ Remove goal points if passed
         """
-        for gpl in [self.green_gps, self.corr_gps]:
-            for i,gp in enumerate(gpl):
-                if gp[0] <= self.pass_rad or gp[1] <= self.pass_rad:
-                    gpl.pop(i)
+        # Criteria for passing a green patch
+        for i,gp in enumerate(self.green_gps):
+            if gp[0] <= self.pass_rad or gp[1] <= self.pass_rad:
+                gpl.pop(i)
+
+        # Criteria for passing a corridor
+        for i,gp in enumerate(self.corr_gps):
+            if gp[0] <= self.pass_rad or gp[1] <= self.pass_rad:
+                gpl.pop(i)
 
     def sort_gpls(self):
         """ Sort goal points by Euclidean distance to car
