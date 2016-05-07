@@ -16,12 +16,25 @@ inch2meter 		 = .0254
 HSV_lower_thresh = tuple([int(i) for i in param("greenCam.lower_thresh")])
 HSV_upper_thresh = tuple([int(i) for i in param("greenCam.upper_thresh")])
 MIN_AREA_THRESH = float(param("greenCam.min_area_thresh"))
+DEBUG		= bool(param("greenCam.debug"))
 
-def debug_info(mask, img, pixels):
-	#res = cv2.bitwise_and(img, img, mask=mask)
-	pass
+def debug_info(mask, img, hsv, pixels, vis = False):
+	if vis == True:
+		res = cv2.bitwise_and(img, img, mask=mask)
+		imshow("maskedRoi", res)
+
+	hsv_channels = cv2.split(hsv, mask=mask)
+	H_info = HminVal, HmaxVal, HminLoc, HmaxLoc = minMaxLoc(hsv_channels[0])
+	S_info = SminVal, SmaxVal, SminLoc, SmaxLoc = minMaxLoc(hsv_channels[1])
+	V_info = VminVal, VmaxVal, VminLoc, VmaxLoc = minMaxLoc(hsv_channels[2])
+	print ("\n valid points:", len(pixels))
+	print ("\n minVal, maxVal, minLoc, maxLoc \n")
+	print ("H:", H_info)
+	print ("S:", S_info)
+	print ("V:", V_info)
+	print ("____________________________________")
+	return
 	
-
 
 def pixel2world(row,col,width):
 	y = fourPL(A_y,B_y,C_y,D_y,row)*inch2meter
@@ -50,11 +63,13 @@ def find_green(image):
 		px,py,area = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]), M["m00"])
 		if area >= MIN_AREA_THRESH:
 			x,y = pixel2world(py,px,width)
-			centroids.append([x,y,0.0])
+			centroids.append([y,-1*x,0.0])
 			pixels.append([px,py+height/2,0.0])
 			if y < closest_y:
 				closest_y = y
 				closest_centroid = [y,-1*x,0.0]
+	if DEBUG:
+		debug_info(mask ,roi, hsv_img, pixels, vis=False)
 	return Point(*closest_centroid), centroids
 
 
