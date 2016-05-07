@@ -3,7 +3,7 @@
 	<rosparam command="load" ns="local_costmap" file="$(find local_costmap)/config/config.yaml" />
 	<rosparam command="load" ns="dynamics" file="$(find local_costmap)/config/dynamics.yaml" />
 
-	<node name="scan_throttle" type="throttle" pkg="topic_tools" args="messages /racecar/laser/scan 30 /scan_throttle"/>
+	<node name="scan_throttle" type="throttle" pkg="topic_tools" args="messages /scan 20 /scan_throttle"/>
 
 	<node pkg="tf" type="static_transform_publisher" name="hokuyo_link_broadcaster"
 		args="0 0 0 0 0 0 1 /base_link /hokuyo_link 50" />

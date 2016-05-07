@@ -113,7 +113,7 @@ class ScanMaximaNavigator(object):
 		less_ranges = ranges[::param("navigator3.downsample")]
 		less_angles = angles[::param("navigator3.downsample")]
 
-		less_ranges[less_ranges > param("navigator3.error_range")] = 8
+		less_ranges[less_ranges > param("navigator3.error_range")] = param("navigator3.laser_max")
 
 		if self.window == None:
 			# only compute these constants once
