@@ -9,6 +9,7 @@ import os
 from sensor_msgs.msg import LaserScan
 from rospy.numpy_msg import numpy_msg
 from std_msgs.msg import ColorRGBA
+from geometry_msgs.msg import Point as Point_msg
 
 # code from other files in this repo
 import navigator2 as navigator
@@ -441,9 +442,7 @@ class GoalManager(object):
             - This should wrap the corridor detector and the vision based goal detection
     """
 
-    GREEN_GP_TOPIC = "/waypoint_markers" # TODO: Remove this later
-
-    def __init__(self, viz, pass_rad=1, locality_rad=100, max_pts=5):
+    def __init__(self, viz, pass_rad=0.1, locality_rad=100, max_pts=5):
         """ Tunable parameters are kwargs above:
                 - pass_rad = the radius threshold around the car for which a goal point
                     is considered "passed"
@@ -461,7 +460,7 @@ class GoalManager(object):
 
         self.pass_rad = pass_rad
         self.locality_rad = locality_rad
-        self.green_sub = rospy.Subscriber(self.GREEN_GP_TOPIC, Point, self.cb_green)
+        self.green_sub = rospy.Subscriber(param("goal_manager.green_gp_topic"), Point_msg, self.cb_green)
 
     def cb_green(self, pt):
         """ Processes the goal points produced by Fernando's green patch detector
@@ -477,6 +476,8 @@ class GoalManager(object):
         """
         # NOTE: We L1 norm instead of L2 radius for fast calculation
 
+        if new_pt == None:
+            return
         x,y,orient = new_pt
         gp_list = self.green_gps if gp_type=="green" else self.corr_gps
 
@@ -502,7 +503,7 @@ class GoalManager(object):
             return None
 
         # Prune out all passed points TODO: should this go before matching?
-        self.check_passed()
+        # self.check_passed()
 
         # Sort the individual goal point management lists
         # self.sort_gpls()
@@ -515,7 +516,7 @@ class GoalManager(object):
         # dx, dy = (next_x-target_x, next_y-target_y)
 
         # Publish target coordinates with direction of next goal point
-        return State(x=target_x, y=target_y, theta=np.arctan(dy/dx), steering_angle=None, speed=None)
+        return State(x=target_x, y=target_y, theta=0, steering_angle=None, speed=None)
 
     def check_passed(self):
         """ Remove goal points if passed
@@ -1149,16 +1150,28 @@ class ChallengeController(DirectControlModule):
         while True:
             if self.new_data:
                 self.computing_control = True
-                if self.control_monitor.index % 10 == 1:
-                    print ("planning fps: ", self.control_monitor.fps())
-                    self.optimize_time_limit()
-
+                
                 self.scan_time = self.scanner_data.header.stamp.to_sec()
+
+                start_time = rospy.get_rostime().to_sec()
                 # update data sources
                 self.obstacles.scan_callback(self.scanner_data)
+                obstacle_time = rospy.get_rostime().to_sec()
                 self.goals.scan_callback(self.scanner_data)
+                goal_time = rospy.get_rostime().to_sec()
                 # compute control actions
                 self.compute_control()
+                control_time = rospy.get_rostime().to_sec()
+
+                if self.control_monitor.index % 10 == 1:
+                    print()
+                    print ("average planning fps: ", self.control_monitor.fps())
+                    self.optimize_time_limit()
+                    print("last cycle time: total:", round(control_time - start_time,4), 's')
+                    print("   - obstacles :", round(obstacle_time - start_time,4), 's')
+                    print("   - goals     :", round(goal_time-obstacle_time,4), 's')
+                    print("   - control   :", round(control_time-goal_time,4), 's')
+
 
                 # house keeping
                 self.control_monitor.step()
@@ -1195,10 +1208,8 @@ class ChallengeController(DirectControlModule):
         deflections = map(lambda x: abs(x.deflection), circle_path.states)
         max_deflection = max(deflections)
 
-        # dt = rospy.get_rostime().to_sec() - self.scan_time
-        # print(dt)
         start_state = circle_path.states[0]
-        # start_state = self.integrate_forward(dt)
+
         #TODO: modify this depending on path curvature
         L = param("space_explorer.max_pursuit_radius")*np.cos(max_deflection)
         L = max(L, param("space_explorer.min_pursuit_radius"))

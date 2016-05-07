@@ -5,15 +5,19 @@ greenCam:
   min_area_thresh: 200.0
   lower_thresh: [60,60,6]
   upper_thresh: [80,255,255]
- 
+
+goal_manager:
+  green_gp_topic: "/waypoint_markers"
+
+
 space_explorer: 
   enabled: True
   overlap_percentage_goal: 0.15
-  min_radius: 0.6
+  min_radius: 0.9
   # if the first constraint is too severe, use this instead
-  hard_min_radius: 0.34
+  hard_min_radius: 0.4
   # multiplicative penalty factor for being lower than the min_radius
-  soft_limit_penalty: 1.7
+  soft_limit_penalty: 1.8
   branch_factor: 15
   max_distance: 12
   back_limit: -1.0
@@ -23,7 +27,7 @@ space_explorer:
   # deflection angle relative to parent, scaled by this factor
   # too high and it plans bad paths, to low and excess jerk
   deflection_coeff: 0.0
-  max_pursuit_radius: 2.0
+  max_pursuit_radius: 2.4
   min_pursuit_radius: 0.5
   time_limit: 0.15
   sampling_bounds_initial: [-1.1,1.1]
@@ -119,7 +123,7 @@ obstacle_map:
   ymin: -8
   ymax: 8
   # minimum distance to nearest obstacle to be considered admissible
-  min_distance: 0.1
+  min_distance: 0.3
   # number of cells worth of spacing between admissibility check waypoints
   # higher is faster, but might result in jumping over obstacles
   admissible_hop: 2.0
@@ -223,7 +227,7 @@ emergency:
   # backu
 
 navigator3:
-  downsample: 4
+  downsample: 2
   # widths are in percentages compared to size of data
   gaussian_width: 0.15
   median_width: 0.17
@@ -236,8 +240,8 @@ navigator3:
   # removes this percentages of scans
   trim_percentage: 0.1
   show_local_viz: False
-  laser_max: 3
+  laser_max: 8
   error_range: 60
-  contiguous_min: 30
+  contiguous_min: 40
 
 ...
