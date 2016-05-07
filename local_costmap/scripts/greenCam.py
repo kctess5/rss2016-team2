@@ -19,8 +19,8 @@ from cv_bridge import CvBridge, CvBridgeError
 #B_y = .4321479
 #C_y = 2.967
 #D_y = -46.14
-A_y,B_y,C_y,D_y = tuple(param("greenCam.row2y"))
-A_x,B_x,C_x,D_x = tuple(param("greenCam.row2width")) 
+A_y,B_y,C_y,D_y = tuple([float(i) for i in param("greenCam.row2y")])
+A_x,B_x,C_x,D_x = tuple([float(i) for i in param("greenCam.row2width")]) 
 
 
 #given y, this 4PL returns how many pixels are in inch
@@ -36,11 +36,11 @@ A_x,B_x,C_x,D_x = tuple(param("greenCam.row2width"))
 
 inch2meter 		 = .0254
 #HSV_lower_thresh = (90,40,6)
-HSV_lower_thresh = tuple(param("greenCam.lower_thresh"))
-HSV_upper_thresh = tuple(param("greenCam.upper_thresh"))
+HSV_lower_thresh = tuple([int(i) for i in param("greenCam.lower_thresh")])
+HSV_upper_thresh = tuple([int(i) for i in param("greenCam.upper_thresh")])
 #HSV_upper_thresh = (130,255,255)
 #MIN_AREA_THRESH  = 200.
-MIN_AREA_THRESH = param("greenCam.min_area_thresh")
+MIN_AREA_THRESH = float(param("greenCam.min_area_thresh"))
 
 #row starts at 0 in center of ZED frame and increments when going down in the frame
 #col starts at 0 left of ZED frame, x is 0 in middle of frame
@@ -57,9 +57,15 @@ def find_green(image):
 	height,width = image.shape[:2]
 	roi = image[height/2:,:]
 	hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
+
+	cv2.imshow("colors",hsv_img)
+
 	mask = cv2.inRange(hsv_img, HSV_lower_thresh, HSV_upper_thresh)
 	mask = cv2.erode(mask, None, iterations = 2)
 	mask = cv2.dilate(mask, None, iterations = 2)
+
+	cv2.imshow("debug", mask)
+	cv2.waitKey(1)	
 
 	centroids = []
 	pixels = []
@@ -89,7 +95,7 @@ class greenCam:
 		rospy.init_node('greenCam')
 	def recv_image(self, img):
 		try:
-			cv_image = self.bridge.imgmsg_to_cv2(data, "rgb8")
+			cv_image = self.bridge.imgmsg_to_cv2(img, "rgb8")
 			green_goal,waypoint_markers = find_green(cv_image)
 			#self.pub_points.publish(waypoint_markers)
 			self.pub_green_goal.publish(green_goal)

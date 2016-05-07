@@ -55,15 +55,15 @@ class Navigator(object):
             heading = math.atan2(y1 - y0, x1 - x0) - math.pi/2.
             if abs(heading) > 5.*math.pi/8.:
                 # Angle is too steep to be a legit goal point. Try next corridor.
-                print "skipping heading", heading
+                # print "skipping heading", heading
                 continue
             # print "good heading", heading
             goalpoint = Point2D(centerpoint_x, centerpoint_y)
             if distance2(goalpoint, Point2D(0,0)) < 8:
                 # Goal point is too close to the car
                 # Move the goal point far away in the direction of its heading
-                x = goalpoint.x + math.cos(heading)*7
-                y = goalpoint.y + math.sin(heading)*7
+                x = goalpoint.x + math.cos(heading)*5
+                y = goalpoint.y + math.sin(heading)*5
                 return (Point2D(x,y), heading)
             return (goalpoint, heading)
         # No (suitable) corridors

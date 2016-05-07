@@ -14,7 +14,7 @@ from std_msgs.msg import ColorRGBA
 import navigator2 as navigator
 from visualization_driver import VisualizationDriver
 from helpers import param, euclidean_distance, FrameBuffer, polar_to_euclid
-from helpers import State, AccelerationState, Circle, CirclePathState, Path, StateRange, SearchNode, TreeNode
+from helpers import State, AccelerationState, Circle, CirclePathState, Path, StateRange, SearchNode, TreeNode, FPSCounter, circle_segment_intersection, spline_circle_intersection
 from helpers import Point2D as Point
 from pathlib import arc_step, ackerman_radius
 from pathlib2 import arc_step_fast
@@ -24,6 +24,8 @@ from profilehooks import profile, timecall
 from heapq import nsmallest
 from whoami import is_racecar
 import matplotlib.pyplot as plt
+from navigator3 import ScanMaximaNavigator
+from curve_lib import C_factory
 
 # from shapely.geometry import Point as GeoPoint
 # from shapely.ops import union
@@ -150,7 +152,7 @@ class DynamicModel(object):
     """ Encapsulates the dynamics of the car """
     def __init__(self):
         # self.max_accel = float(param("dynamics.max_linear_accel")) / float(param("planning_freq"))
-        self.max_decel = float(param("dynamics.max_linear_decel")) / float(param("execution_freq"))
+        # self.max_decel = float(param("dynamics.max_linear_decel")) / float(param("execution_freq"))
         self.wheelbase = param("dynamics.wheelbase")
         self.execution_freq = float(param("execution_freq"))
 
@@ -243,6 +245,15 @@ class DynamicModel(object):
         return State(x=propagated[0], y=propagated[1], theta=propagated[2], \
             steering_angle=state.steering_angle, speed=state.speed)
 
+    def propagate_time(self, state, t=1.0):
+        """ Gives an estimate for the final pose after assuming a given state after a given time. t=1 is time time of the next control timestep
+        """
+        effective_radius = self.estimate_effective_arc(state)
+            
+        propagated = arc_step_fast(effective_radius, t * state.speed, state.x, state.y, state.theta)
+        return State(x=propagated[0], y=propagated[1], theta=propagated[2], \
+            steering_angle=state.steering_angle, speed=state.speed)
+
     def propagate_accel(self, start_state, linear_accel, steering_velocity, num_segments):
         # NOTE: this function returns a list that DOES NOT include the given start state as 
         # it is assumed to be the last state in the previous path segment
@@ -283,8 +294,10 @@ class DynamicModel(object):
         Returns: Maximum speed in meters.
                  This will not exceed dynamics.max_speed.
         """
+        if turning_radius > 5:
+            return param("dynamics.max_speed")
         x = turning_radius
-        curve = -0.14*x*x + 1.38*x +1.151
+        curve = (-0.14*x*x + 1.38*x +1.151 ) * param("planner.speed_safety")
         return min(param("dynamics.max_speed"), curve)
 
     def dubins_time(self, q0, q1, turning_radii):
@@ -408,7 +421,7 @@ class ObstacleMap(object):
         self.dirty = True
 
     def viz(self):
-        if not self.buffer.distmap == None:        
+        if not self.buffer.distmap == None and param("obstacle_map.vizualize_distmap"):        
             # dist = self.buffer.distmap
             # skel = gaussian_filter(dist, sigma=1)
             # skel = canny(skel)
@@ -439,12 +452,13 @@ class GoalManager(object):
                     Bayesian particle filtering)
                 - max_pts = maximum number of points allowed in gp buffer
         """
-        self.navigator = navigator.Navigator(viz)
+        # self.navigator = navigator.Navigator(viz)
+        self.navigator3 = ScanMaximaNavigator(viz)
         self.origin = None
 
         # TODO: Make these range-query trees/numpy arrays for larger max_pts value
         self.green_gps = []
-        self.corr_gps = [self.navigator.goalpoint()] # Should never be empty
+        self.corr_gps = []
 
         self.pass_rad = pass_rad
         self.locality_rad = locality_rad
@@ -481,7 +495,12 @@ class GoalManager(object):
         """ Return the position of the next goal in local coordinates
                 - for now, this directly calls the corridor detector with no smoothing
         """
-        self.match(self.navigator.goalpoint(), "corridor")
+        new_gp = self.navigator3.goalpoint()
+        self.match(new_gp, "corridor")
+
+        # Car stops if no goal points
+        if len(self.green_gps) == 0 and len(self.corr_gps) == 0:
+            return None
 
         # Prune out all passed points TODO: should this go before matching?
         self.check_passed()
@@ -514,8 +533,13 @@ class GoalManager(object):
         self.corr_gps.sort(key=lambda g: g[0]**2 + g[1]**2)
 
     def scan_callback(self, data):
-        self.navigator.laser_update(data)
-        self.navigator.visualize()
+        self.navigator3.scan_callback(data)
+        
+        # self.navigator.laser_update(data)
+        # self.navigator.visualize()
+
+    def viz(self):
+        self.navigator3.visualize()
 
 class HeuristicSearch(object):
     """ Perform heuristic search on the provided set of cost/admissibility/heuristic/neighbor functions """
@@ -545,6 +569,9 @@ class HeuristicSearch(object):
         heapq.heappush(self.frontier, (ss.heuristic, ss))
 
     def search(self, time_limit):
+        if self.goal_state == None:
+            return None
+        
         start_time = time.time()
 
         # extend nodes until the time limit is reached
@@ -608,7 +635,7 @@ class HeuristicSearch(object):
     def complete_paths(self):
         return map(lambda x: self.make_path(x[1]), self.found_paths)
 
-    def make_path(self, end_node, add_goal=False):
+    def make_path(self, end_node, add_goal=False, remove_start=True):
         # a path is a list of control states, in the order of traversal
         # builds it in reverse order by following parent pointers, then reverses result
         path = [end_node.state]
@@ -616,7 +643,8 @@ class HeuristicSearch(object):
             path.append(end_node.parent.state)
             end_node = end_node.parent
         # don't execute the start state
-        path.pop()
+        if remove_start:
+            path.pop()
         path.reverse()
 
         if add_goal:
@@ -892,6 +920,10 @@ class SpaceExploration(HeuristicSearch):
         # cache reused values
         step = math.pi * 2.0 / param("space_explorer.branch_factor")
         self.thetas = np.linspace(0, math.pi * 2.0 - step, num=param("space_explorer.branch_factor"))
+        # self.thetas = [0.5]
+        bounds = param("space_explorer.sampling_bounds_initial")
+        self.initial_thetas = np.linspace(bounds[0], bounds[1], num=param("space_explorer.branch_factor"))
+        # self.thetas = [6.27]
         self.radii = np.empty(param("space_explorer.branch_factor"))
         
         self.goals = goals
@@ -900,17 +932,21 @@ class SpaceExploration(HeuristicSearch):
         super(SpaceExploration, self).__init__()
 
     def circle_radius(self, state):
-        return self.obstacles.dist_at(state) - param("obstacle_map.min_distance")
+        return min(param("space_explorer.max_circle_size"), self.obstacles.dist_at(state) - param("obstacle_map.min_distance"))
 
     def reset(self, start_state):
         # Frontier is a priority queue.
-        start_state = Circle(x=start_state.x, y=start_state.y, radius=self.circle_radius(start_state))
+        start_state = Circle(x=start_state.x, y=start_state.y, radius=self.circle_radius(start_state), deflection=0)
         super(SpaceExploration, self).reset(start_state)
 
     def cost(self, state):
-        return state.radius
+        if state.radius < param("space_explorer.min_radius"):
+            return state.radius * param("space_explorer.soft_limit_penalty")
+        return state.radius#*(1.0 + param("space_explorer.deflection_coeff")*abs(np.sin(state.deflection / 2.0)) )
     
     def heuristic(self, state, goal_state):
+        if goal_state == None:
+            return np.inf
         return (euclidean_distance(state,goal_state) - state.radius)*param("space_explorer.heuristic_bias")
     
     def overlap(self, s1, s2, percentage=.15):
@@ -922,20 +958,23 @@ class SpaceExploration(HeuristicSearch):
 
     def goal(self):
         g=self.goals.next_goal()
+        if g == None:
+            return None
         r = self.circle_radius(g)
         # if the goal is out of bounds it returns a very large value, fix that
         if r > 100:
-            r = 1.0
-        return Circle(x=g.x, y=g.y, radius=r)
+            r = param("space_explorer.max_circle_size")
+        return Circle(x=g.x, y=g.y, radius=r, deflection=0)
 
     def goal_met(self, state, goal_state):
         return self.overlap(state, goal_state, float(param("space_explorer.overlap_percentage_goal")))
 
     def is_admissible(self, state):
-        return self.obstacles.dist_at(state) > param("space_explorer.min_radius")
+        return self.obstacles.dist_at(state) > param("obstacle_map.min_distance")
 
     def should_bail(self, state, goal_state):
         # too_far
+        # if np.linalg.norm(np.array([state.x, state.y]))
         if euclidean_distance(state, Point(0,0)) > param("space_explorer.max_distance"):
             return True
         # too big
@@ -964,15 +1003,32 @@ class SpaceExploration(HeuristicSearch):
 
     def neighbors(self, state):
         self.radii.fill(state.radius)
-        xs, ys = polar_to_euclid(self.thetas, self.radii)
+        if state == self.tree_root.state:
+            thetas = self.initial_thetas
+        else:
+            thetas = self.thetas
+        
+        xs, ys = polar_to_euclid(thetas, self.radii)
 
-        return map(lambda x: Circle( \
-            x=state.x+x[0], y=state.y+x[1], radius=self.circle_radius(Point(x=state.x+x[0], y=state.y+x[1]))),
-                zip(xs,ys))
+        def deflection(angle):
+            if angle > math.pi:
+                return angle - 2.0*math.pi
+            return angle
+
+        neighbors = map(lambda x: Circle( \
+            x=state.x+x[0], y=state.y+x[1],  \
+            radius=self.circle_radius(Point(x=state.x+x[0], y=state.y+x[1])), \
+            deflection=deflection(x[2])),
+                zip(xs,ys, thetas))
+
+        # use the hard constraint here
+        potential_neighbors = filter(lambda x: x.radius > param("space_explorer.hard_min_radius"), neighbors)
+
+        return potential_neighbors
 
     def best(self):
         if len(self.found_paths) > 0:
-            return self.make_path(self.found_paths[0][1], True)
+            return self.make_path(self.found_paths[0][1], True, False)
         return None
     
 class ChallengeController(DirectControlModule):
@@ -987,42 +1043,45 @@ class ChallengeController(DirectControlModule):
         self.state_index = 0
 
         # counter for tracking fps of control
-        self.control_count = 0
-        self.exec_count = 0
-        self.start_time = rospy.get_rostime().to_sec()
-        self.exec_start_time = rospy.get_rostime().to_sec()
-        self.search_time_limit = 1.0/float(param("planning_freq"))
+        self.control_monitor = FPSCounter(True)
+        self.execution_monitor = FPSCounter(False)
+
+        self.execution_time_estimate = 1.0 / 25.0
+
+        self.lookahead_circle = None
+
+        # self.search_time_limit = 1.0/float(param("planning_freq"))
         self.computing_control = False
         self.since_scan_recieved = []
 
         # used for one off path tests
         self.test_started = False
         self.test_path = None
-        self.control_steps_per_plan_interval = int(math.ceil(float(param("execution_freq")) * self.search_time_limit))
+        self.control_steps_per_plan_interval = 1 # int(math.ceil(float(param("execution_freq")) * self.search_time_limit))
 
         # initialize peripheral algorithms
         self.viz = VisualizationDriver()
 
         self.goals = GoalManager(self.viz)
         self.obstacles = ObstacleMap()
-        if param("space_explorer.enabled"):
-            self.space_explorer = SpaceExploration(self.obstacles, self.goals)
-        self.path_planner = AccelerationPlanner(self.obstacles, self.goals)
-
+            
+        self.space_explorer = SpaceExploration(self.obstacles, self.goals)
         self.scan_subscriber = rospy.Subscriber(param("runtime_specific.scan_topic"),
             numpy_msg(LaserScan), self.scan_callback, queue_size=1)
 
-        # whinytimer.WhinyTimer(rospy.Duration(1.0 / float(param("planning_freq"))), self.compute_control)
-        # set the timer for a bit under the target because the search function will slow down as necessary
-        # to hit the inteded speed limit
-        # rospy.Timer(rospy.Duration(0.95 / float(param("planning_freq"))), self.compute_control)
-        rospy.Timer(rospy.Duration(1.0 / float(param("execution_freq"))), self.execute_control)
         rospy.on_shutdown(lambda: self.on_shutdown())
 
-        if param("obstacle_map.vizualize_distmap"):
+        self.new_data = False
+        self.scanner_data = None
+
+        control_thread = threading.Thread(target=lambda: self._control_loop())
+        control_thread.daemon = True
+        control_thread.start()
+
+        if param("obstacle_map.vizualize_distmap") or param("navigator3.show_local_viz"):
             while not rospy.is_shutdown():
                 self.loop()
-                rospy.sleep(0.4)
+                rospy.sleep(0.05)
 
     def test_control(self):
         if not self.test_started:
@@ -1062,201 +1121,230 @@ class ChallengeController(DirectControlModule):
                 self.viz.publish_viable_paths(self.path_planner.tree_root)
                 # self.viz.publish_viable_accel_paths(self.path_planner.tree_root)
 
-    # compute dist_goal for each node in the the given circle path
-    def augment_circle_path(self, raw_path):
-        augmented_path = []
-        dist_goal = 0
-        for i in reversed(raw_path.states):
-            augmented_path.append(CirclePathState(circle=i, dist_goal=dist_goal))
-            dist_goal += i.radius
-        return Path(states=augmented_path[::-1])
-
     def optimize_time_limit(self):
+
+        self.execution_time_estimate = 1.0 / self.control_monitor.fps()
         # this function will decrease the search time limit if the planning is taking too long
         # otherwise it decrease 
         # place reasonable bounds on the time to prevent crazy results
-        max_time = 1.2/float(param("planning_freq"))
-        min_time = 0.4/float(param("planning_freq"))
+        # max_time = 1.2/float(param("planning_freq"))
+        # min_time = 1.0/float(param("planning_freq"))
 
-        percentage_slower_than_goal = (float(param("planning_freq")) - self.planning_fps())/float(param("planning_freq")) 
-        self.search_time_limit = np.clip(self.search_time_limit * (1.0 - percentage_slower_than_goal), min_time, max_time)
+        # percentage_slower_than_goal = (float(param("planning_freq")) - self.planning_fps())/float(param("planning_freq")) 
+        # self.search_time_limit = np.clip(self.search_time_limit * (1.0 - percentage_slower_than_goal), min_time, max_time)
 
         # update the expected number of steps per plan interval so that the emergency planners
         # can use the coorect number of control steps
-        self.control_steps_per_plan_interval = int(math.ceil(float(param("execution_freq")) * self.search_time_limit))
-
-    def planning_fps(self):
-        return float(self.control_count) / (rospy.get_rostime().to_sec() - self.start_time)
-
-    def execution_fps(self):
-        return float(self.exec_count) / (rospy.get_rostime().to_sec() - self.exec_start_time)
-
-    def reset_fps(self, which="planning"):
-        if which=="planning":
-            self.start_time = rospy.get_rostime().to_sec()
-            self.control_count = 0
-        elif which=="execution":
-            self.exec_start_time = rospy.get_rostime().to_sec()
-            self.exec_count = 0
+        # self.control_steps_per_plan_interval = int(math.ceil(float(param("execution_freq")) * self.search_time_limit))
 
     def integrate_forward(self, time_delta):
-        # returns an estimate of where the car will be at the given time offset from now
-        # in the frame of the latest scan data
-        path_segments_executed = time_delta * float(param("execution_freq"))
-        num_executed = int(math.floor(path_segments_executed))
-        # print(num_executed)
-        # the index of the control state that will be executed right before the desired
-        # time is the current state index + number of expected
-        leftover = path_segments_executed % 1.0
-
-        control_steps = map(lambda x: (x.steering_angle, x.speed), self.since_scan_recieved)
+        # TODO fix this to actually integrate forward, given the controller fps 
         
-        if self.current_path:
-            future = self.current_path.states[self.state_index:self.state_index + num_executed]
-            control_steps += map(lambda x: (x.steering_angle, x.speed), future)
-        else:
-            print("NO PATH")
+        start_state = State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+        # start_state = DYNAMICS.propagate_time(start_state, time_delta)
+        # print(start_state.x, start_state.y)
 
-        ls = State(x=0, y=0, theta=0, steering_angle=0, speed=0)
-        next_state = None
-        for i in control_steps:
-            next_state = State(x=ls.x, y=ls.y, theta=ls.theta, steering_angle=i[0], speed=i[1])
-            next_state = DYNAMICS.propagate(next_state)
-            ls = next_state
+        return start_state
 
-        if next_state:
-            return next_state
-        else:
-            return State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
-        
+    def _control_loop(self):
+        while True:
+            if self.new_data:
+                self.computing_control = True
+                if self.control_monitor.index % 10 == 1:
+                    print ("planning fps: ", self.control_monitor.fps())
+                    self.optimize_time_limit()
+
+                self.scan_time = self.scanner_data.header.stamp.to_sec()
+                # update data sources
+                self.obstacles.scan_callback(self.scanner_data)
+                self.goals.scan_callback(self.scanner_data)
+                # compute control actions
+                self.compute_control()
+
+                # house keeping
+                self.control_monitor.step()
+                self.new_data = False
+                self.computing_control = False
+            else:
+                time.sleep(0.001)
+
     def scan_callback(self, data):
-        # if the car is already thinking, just drop this scan
         if self.computing_control:
-            # print("DROPPING SCAN DATA")
             return
 
-        thread = threading.Thread(target=lambda: self._scan_callback(data))
-        thread.daemon = True
-        thread.start()
-    
-    @profile(sort='cumtime')
-    def _scan_callback(self, data):
-        # this is the primary entry point for our planning algorithm
-        #   - compute obstacle map
-        #   - compute navigation
-        #   - estimate path start point
-        #   - compute path
-
-        self.computing_control = True
+        self.new_data = True
+        self.scanner_data = data
         self.since_scan_recieved = []
-        self.obstacles.scan_callback(data)
-        self.goals.scan_callback(data)
-        self.compute_control()
-        self.computing_control = False
 
-    @profile(sort='tottime')
+    def speed_bounds(self):
+        # returns the min/max speed that the car can be set to when called
+        # find how much acceleration we can apply to the car considering the rate of control
+        fps = self.control_monitor.fps()
+
+        max_decel = param("dynamics.max_linear_decel") / fps
+        max_accel = param("dynamics.max_linear_accel") / fps
+
+        max_speed = min(param("dynamics.max_speed"), max(0.0, self.state_history[-1].speed)+max_accel)
+        min_speed = max(param("planner.backup_speed"), self.state_history[-1].speed+max_decel)
+
+        return (min_speed, max_speed)
+
+    def pure_pursuit_control(self, circle_path, spline_path=None):
+        if circle_path == None:
+            return None
+
+        deflections = map(lambda x: abs(x.deflection), circle_path.states)
+        max_deflection = max(deflections)
+
+        # dt = rospy.get_rostime().to_sec() - self.scan_time
+        # print(dt)
+        start_state = circle_path.states[0]
+        # start_state = self.integrate_forward(dt)
+        #TODO: modify this depending on path curvature
+        L = param("space_explorer.max_pursuit_radius")*np.cos(max_deflection)
+        L = max(L, param("space_explorer.min_pursuit_radius"))
+        # print(L, max_deflection, np.cos(max_deflection))
+        pursuit_circle = Circle(radius=L, x=start_state.x, y=start_state.y, deflection=0)
+
+        self.lookahead_circle = pursuit_circle
+
+        # if not spline_path == None:
+        #     # print("test")
+        #     intersection = spline_circle_intersection(pursuit_circle, spline_path)
+        # else:
+        # if intersection == None:
+            # find intersection between the pure pursuit circle and the path
+        intersection = None
+        for i in xrange(1,len(circle_path.states)):
+            intersection = circle_segment_intersection(pursuit_circle, circle_path.states[i-1], circle_path.states[i])
+            if not intersection == None:
+                break
+
+        if intersection == None:
+            return None
+
+        np_intersection = np.array([intersection.x, intersection.y])
+        np_start_state = np.array([start_state.x, start_state.y])
+
+        local_intersection = np_intersection - np_start_state
+
+        # find control required to reach the intersection point
+        if abs(local_intersection[1]) < param("epsilon"):
+            arc_radius = np.inf
+        else:
+            arc_radius = L * L / (2.0*local_intersection[1])
+
+        arc_radius = max(param("dynamics.r_min"), arc_radius)
+
+        bounds = self.speed_bounds()
+
+        # TODO use the dynamical model to find an optimal steering angle
+        speed = DYNAMICS.max_speed_at_turning_radius(abs(arc_radius))
+        speed = np.clip(speed, max(0.0, bounds[0]), bounds[1])
+
+        # steering = DYNAMICS.steering_angle(target_arc_radius=arc_radius, target_speed=speed)
+        steering_angle = np.arctan2(param("dynamics.wheelbase"), arc_radius) * np.sign(local_intersection[1])
+
+        # print(round(steering_angle,2), round(speed,2))
+
+        return State(x=0,y=0,theta=0,steering_angle=steering_angle,speed=speed)
+
+    @profile(sort="cumtime")
     def compute_control(self, event=None):
         if not self.obstacles.first_laser_recieved:
             print("Waiting for laser data...")
             return False
-
-        if (self.control_count + 1) % param("planner.fps_optimization_iteration_count") == 0:
-            print ("planning fps: ", self.planning_fps())
-            self.optimize_time_limit()
-            self.reset_fps()
 
         # if the test is set to occur, this should pass control to that function by returning
         if param("planner.test.enabled"):
             self.test_control()
             return 
 
-        start_state = self.integrate_forward(self.search_time_limit)
-        start_accel_state = AccelerationState(control_states=[start_state], linear_accel=0, steering_velocity=0)
-
-        best_path = None
-        if param("space_explorer.enabled"):
-            self.space_explorer.reset(start_state=start_state)
-            t = self.space_explorer.search(time_limit=0.4/float(param("planning_freq")))
-            circle_path = self.space_explorer.best()
-
-            if self.viz.should_visualize("space_explorer.explored"):
-                self.viz.publish_exploration_circles(self.space_explorer.tree_root)
-
-            # if the circle path finder fails, it is unlikely that a valid path exists
-            # and the car should perform stuck control
-            if not circle_path:
-                print("NO PATH FOUND")
-                self.stuck_control()
-                # self.obstacles.lock.release()
-                return
-
-            if self.viz.should_visualize("space_explorer.path") and self.space_explorer.best():
-                self.viz.publish_path_circles(circle_path)
-
-            circle_path = self.augment_circle_path(circle_path)
-            self.path_planner.reset(start_state=start_accel_state, circle_path=circle_path)
-            self.path_planner.search(time_limit=0.5/float(param("planning_freq")))
-            
-            best_path = self.path_planner.best()
-
-            print("Computed control with "+ str(self.path_planner.step_count) + " kinodynamic extensions and " 
-                + str(self.space_explorer.step_count) + " circle extensions")
-        else:
-
-            self.path_planner.reset(start_state=start_accel_state)
-            self.path_planner.search(time_limit=self.search_time_limit)
-            # self.path_planner.search_nsteps(43)
-
-            best_path = self.path_planner.best()
-            # if best_path:
-            #     speeds = map(lambda x: round(x.speed,2), best_path.states)
-            #     print(speeds)
-
-            print("Computed control with " + str(self.path_planner.step_count) + " graph extensions")
-
-        if best_path == None:
-            # commit emergency plan
-            self.stuck_control()
-        else:
-             # begin executing the new path. if no path is found, the path will be set to 
-            self.commit_path(best_path) 
-
-            # visualize paths if necessary
-            if self.viz.should_visualize("path_search.best_path"):
-                self.viz.publish_best_path(best_path)
-            if self.viz.should_visualize("path_search.complete_paths"):
-                self.viz.publish_complete_path(self.path_planner.complete_paths())
-            if self.viz.should_visualize("path_search.viable_paths"):
-                self.viz.publish_viable_paths(self.path_planner.tree_root)
-        
-            self.control_count += 1
-
-    def execute_control(self, event=None):
-        if not self.is_enabled():
+        if self.goals.next_goal() == None:
+            # stop if no goal point
+            next_path = self.make_stop_path(steering_angle=self.state_history[-1].steering_angle, num_segments=1)
+            self.execute_state(next_path.states[0])
             return
 
-        if self.current_path and self.state_index < len(self.current_path.states):
-            next_state = self.current_path.states[self.state_index]
-            self.state_index += 1
-            self.execute_state(next_state)
+        def parameterize_path(circle_path):
+            # create a parametric curve approximating the control points
+            if circle_path == None:
+                return None
+            # finds the cubic bezier spline described by the circle path
+            n = 3 # order of the curve
+            control_points = map(lambda x: (x.x, x.y), reversed(circle_path.states))
+            len_orig = len(control_points)
+
+            if param("planner.prune_distance") > 0:
+                
+                last = circle_path.states[-1]
+                downsampled_control = []
+                for i in circle_path.states:
+                    if euclidean_distance(last, i) > param("planner.prune_distance") \
+                    or abs(i.deflection) > param("planner.max_prune_deflection"):
+                        downsampled_control.append((i.x, i.y))
+                        last = i
+                control_points = downsampled_control
+
+            return C_factory(control_points, n)
+
+        #TODO use FPS instead
+        dt = rospy.get_rostime().to_sec() - self.scan_time
+        start_state = self.integrate_forward(dt)
+        # print(start_state.x, start_state.y)
+        # start_state = State(x=0, y=0, theta=0, steering_angle=self.state_history[-1].steering_angle, speed=max(0, self.state_history[-1].speed))
+        self.space_explorer.reset(start_state=start_state)
+
+        t = self.space_explorer.search(time_limit=param("space_explorer.time_limit"))
+
+        circle_path = self.space_explorer.best()
+        spline_path = parameterize_path(circle_path)
+        next_control_state = self.pure_pursuit_control(circle_path, spline_path)
+
+        if self.viz.should_visualize("path_search.curve_path") and not spline_path == None:
+            self.viz.publish_path_curve(spline_path)
+
+        if self.viz.should_visualize("space_explorer.explored"):
+            self.viz.publish_exploration_circles(self.space_explorer.tree_root)
+
+        if self.viz.should_visualize("space_explorer.path") and self.space_explorer.best():
+            self.viz.publish_path_circles(circle_path)
+
+        if self.viz.should_visualize("space_explorer.center_path") and self.space_explorer.best():
+            self.viz.publish_path_line(circle_path)
+
+        if self.viz.should_visualize("path_search.lookahead_circle") and self.lookahead_circle:
+            self.viz.publish_lookahead_circle(self.lookahead_circle)
+
+        if next_control_state == None:
+            # commit emergency plan
+            print("No path found with", self.space_explorer.step_count, "extensions")
+            self.execute_stuck_control()
         else:
-            print("NO PATH")
-            # no path is available, so queue the stop path
-            self.commit_path(self.make_stop_path())
-            # start the stopping procedure
-            self.execute_control()
+            # begin executing the new path. if no path is found, the path will be set to 
+            # self.commit_path(best_path) 
+            self.execute_state(next_control_state)
 
-    def commit_path(self, path):
-        self.current_path = path
-        self.state_index = 0
+    def execute_stuck_control(self):
+        if (self.state_history[-1].speed > 0):
+            next_path = self.make_stop_path(steering_angle=self.state_history[-1].steering_angle, num_segments=1)
+        else:
+            next_path = self.make_back_up_path(num_segments=1)
 
-    def make_stop_path(self, steering_angle=0):
+        self.execute_state(next_path.states[0])
+
+    def make_stop_path(self, steering_angle=0, num_segments=None):
+        if num_segments == None:
+            num_segments = self.control_steps_per_plan_interval+10
+
+        fps = self.control_monitor.fps()
+
+        max_decel = param("dynamics.max_linear_decel") / fps
         last_state = self.state_history[-1]
         next_steering = steering_angle
         stop_path = []
-
-        for i in xrange(self.control_steps_per_plan_interval+10):
-            next_speed = max(0.0, last_state.speed + DYNAMICS.max_decel)
+        for i in xrange(num_segments):
+            next_speed = max(0.0, last_state.speed + max_decel)
             if next_speed == 0.0:
                 next_steering = 0.0
             next_state = State(x=last_state.x, y=last_state.y, theta=last_state.y, \
@@ -1264,49 +1352,36 @@ class ChallengeController(DirectControlModule):
             next_state = DYNAMICS.propagate(next_state)
             stop_path.append(next_state)
             last_state = next_state
+
         return Path(states=stop_path)
 
-    def make_back_up_path(self):
+    def make_back_up_path(self, num_segments=None):
         """ Computes a path which backs the robot up for one planner timestep
         """
+        if num_segments == None:
+            num_segments = self.control_steps_per_plan_interval+10
 
         last_state = self.state_history[-1]
         backup_path = []
-        for i in xrange(self.control_steps_per_plan_interval+10):
+        for i in xrange(num_segments):
             next_state = State(x=last_state.x, y=last_state.y, theta=last_state.y, \
                 speed=param("planner.backup_speed"), steering_angle=0)
             next_state = DYNAMICS.propagate(next_state)
             backup_path.append(next_state)
             last_state = next_state
 
-
-        # # TODO need to propagate the positions in time
-        # # TODO pick the backup path more smartly if necessary
-        # backup_path = [State(x=0, y=0, theta=0, speed=param("planner.backup_speed"), steering_angle=0)] * (self.control_steps_per_plan_interval+2)
         return Path(states=backup_path)
-
-    def stuck_control(self):
-        # what to do when the car is stuck according to the path planner
-        # should modify the path
-        if (self.state_history[-1].speed > 0):
-            self.commit_path(self.make_stop_path(steering_angle=self.state_history[-1].steering_angle))
-        else:
-            self.commit_path(self.make_back_up_path())
 
     def execute_state(self, state):
         if not self.is_enabled():
             return
 
-        if (self.exec_count + 1) % param("planner.fps_optimization_iteration_count") == 0:
-            print ("execution fps: ", self.execution_fps())
-            self.reset_fps("execution")
+        if self.execution_monitor.index == 1:
+            print ("execution fps: ", self.execution_monitor.fps())
 
         # apply the given path to the car, continue it until told otherwise
         self.state_history.append(state)
         self.since_scan_recieved.append(state)
-
-        # if state.speed < 0:
-        #     print (state.steering_angle)
 
         # send the message to the car
         self.direct_set(speed=state.speed, steering_angle=state.steering_angle)
@@ -1316,19 +1391,22 @@ class ChallengeController(DirectControlModule):
         if self.viz.should_visualize("path_search.speed"):
             self.viz.publish("path_search.speed", state.speed)
 
-        self.exec_count += 1
+        self.execution_monitor.step()
 
     # callback for when the car is disabled
     def disabled(self):
+        self.direct_set(speed=0, steering_angle=0)
         self.state_history.append(State(x=0, y=0, theta=0, steering_angle=0, speed=0))
 
     def on_shutdown(self):
         """Stop the car."""
         self.direct_set(speed=0, steering_angle=0)
+        self.state_history.append(State(x=0, y=0, theta=0, steering_angle=0, speed=0))
 
     def loop(self):
         # pass
         self.obstacles.viz()
+        self.goals.viz()
 
 def make_flamegraph(filter=None):
     import flamegraph
@@ -1338,6 +1416,10 @@ def make_flamegraph(filter=None):
                                     interval=0.001)
 
 if __name__ == '__main__':
+    # a=Point(x=0,y=0)
+    # b=Point(x=2,y=2)
+    # c = Circle(x=0,y=0,radius=0.5,deflection=0)
+    # print("intersects", circle_segment_intersection(c, a,b))
     # print(dynamics("steering_prediction"))
 
     # make_flamegraph(r"compute_control")
