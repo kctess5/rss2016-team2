@@ -3,11 +3,10 @@ from __future__ import print_function
 
 import rospy
 from sensor_msgs.msg import Image
-from geometry_msgs.msg import Point, Polygon
+from geometry_msgs.msg import PointStamped,Point
 from helpers import param
 import cv2
 import numpy
-from helpers import param
 from cv_bridge import CvBridge, CvBridgeError
 
 A_y,B_y,C_y,D_y = tuple([float(i) for i in param("greenCam.row2y")])
@@ -17,6 +16,12 @@ inch2meter 		 = .0254
 HSV_lower_thresh = tuple([int(i) for i in param("greenCam.lower_thresh")])
 HSV_upper_thresh = tuple([int(i) for i in param("greenCam.upper_thresh")])
 MIN_AREA_THRESH = float(param("greenCam.min_area_thresh"))
+
+def debug_info(mask, img, pixels):
+	#res = cv2.bitwise_and(img, img, mask=mask)
+	pass
+	
+
 
 def pixel2world(row,col,width):
 	y = fourPL(A_y,B_y,C_y,D_y,row)*inch2meter
@@ -58,12 +63,14 @@ class greenCam:
 		self.bridge = CvBridge()
 		self.img = None
 		self.sub = rospy.Subscriber('/camera/rgb/image_rect_color', Image, self.recv_image)
-		self.pub_green_goal = rospy.Publisher('/closest_green_goal', Point)
+		self.pub_green_goal = rospy.Publisher('/closest_green_goal', PointStamped)
 		rospy.init_node('greenCam')
 	def recv_image(self, img):
 		try:
 			cv_image = self.bridge.imgmsg_to_cv2(img, "rgb8")
-			green_goal,waypoint_markers = find_green(cv_image)
+			green_goal = PointStamped()
+			green_goal.point,waypoint_markers = find_green(cv_image)
+			green_goal.header.stamp = img.header.stamp
 			self.pub_green_goal.publish(green_goal)
 		except CvBridgeError as e:
     			print(e)
