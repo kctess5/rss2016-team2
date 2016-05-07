@@ -465,6 +465,9 @@ class GoalManager(object):
     def cb_green(self, pt):
         """ Processes the goal points produced by Fernando's green patch detector
         """
+        # Don't bother adding the default (0,0,0) "goal point"
+        if pt.x == 0.0 and pt.y == 0.0 and pt.z == 0.0:
+            return
         self.match((pt.x, pt.y, pt.z), "green")
 
     def match(self, new_pt, gp_type):
@@ -498,15 +501,15 @@ class GoalManager(object):
         new_gp = self.navigator3.goalpoint()
         self.match(new_gp, "corridor")
 
-        # Car stops if no goal points
-        if len(self.green_gps) == 0 and len(self.corr_gps) == 0:
-            return None
-
         # Prune out all passed points TODO: should this go before matching?
         self.check_passed()
 
         # Sort the individual goal point management lists
         # self.sort_gpls()
+
+        # Car stops if no goal points
+        if len(self.green_gps) == 0 and len(self.corr_gps) == 0:
+            return None
 
         # For now, always prioritize green patches
         if len(self.green_gps) > 0:
