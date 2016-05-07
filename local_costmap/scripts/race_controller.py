@@ -448,8 +448,7 @@ class GoalManager(object):
                 - pass_rad = the radius threshold around the car for which a goal point
                     is considered "passed"
                 - locality_rad = the radius threshold around each goal point for which a new
-                    goal point is mapped as the same (TODO: remove after implementing
-                    Bayesian particle filtering)
+                    goal point is mapped as the same
                 - max_pts = maximum number of points allowed in gp buffer
         """
         # self.navigator = navigator.Navigator(viz)
@@ -488,7 +487,7 @@ class GoalManager(object):
                 return
 
         # Otherwise it's a new point, append
-        gp_list[i].append(new_pt)
+        gp_list.append(new_pt)
         return
 
     def next_goal(self):
@@ -506,14 +505,14 @@ class GoalManager(object):
         self.check_passed()
 
         # Sort the individual goal point management lists
-        self.sort_gpls()
+        # self.sort_gpls()
 
         # For now, always prioritize green patches
         ordered_gps = self.green_gps + self.corr_gps # This should be fast, but if not
                                                      # keep a static array for this
-        target_x, target_y = ordered_gps[0]
-        next_x, next_y = target_x, target_y if len(ordered_gps) < 2 else ordered_gps[1]
-        dx, dy = (next_x-target_x, next_y-target_y)
+        target_x, target_y, target_orient = ordered_gps[0]
+        # next_x, next_y, next_orient = target_x, target_y, target_orient if len(ordered_gps) < 2 else ordered_gps[1]
+        # dx, dy = (next_x-target_x, next_y-target_y)
 
         # Publish target coordinates with direction of next goal point
         return State(x=target_x, y=target_y, theta=np.arctan(dy/dx), steering_angle=None, speed=None)
