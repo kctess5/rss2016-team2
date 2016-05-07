@@ -7,6 +7,7 @@ from geometry_msgs.msg import Point, Pose, Vector3, Quaternion
 import math
 from helpers import param, State, AccelerationState, Path, StateRange, SearchNode, TreeNode
 import tf.transformations
+import numpy as np
 
 class VisualizationDriver(object):
     """ The class responsible for visualizing the cars algorithms"""
@@ -17,13 +18,16 @@ class VisualizationDriver(object):
 
         self.add_publisher("space_explorer.explored", MarkerArray)
         self.add_publisher("space_explorer.path", MarkerArray)
+        self.add_publisher("space_explorer.center_path", Marker)
 
+        self.add_publisher("path_search.curve_path", Marker)
         self.add_publisher("path_search.best_path", Marker)
         self.add_publisher("path_search.complete_paths", MarkerArray)
         self.add_publisher("path_search.viable_paths", MarkerArray)
         self.add_publisher("path_search.speed", Float32)
         self.add_publisher("path_search.steering", Float32)
         self.add_publisher("path_search.test_goal", Marker)
+        self.add_publisher("path_search.lookahead_circle", Marker)
 
         self.add_publisher("goals.next_goal", Marker)
         self.add_publisher("goals.walls", Marker)
@@ -31,6 +35,7 @@ class VisualizationDriver(object):
         self.add_publisher("goals.corridors", Marker)
 
         self.add_publisher("goals.green_goal", Marker)
+        self.add_publisher("goals.corridor_goal", Marker)
 
         for k in self.channels.keys():
             self.last_pubs[k] = time.time()
@@ -65,6 +70,41 @@ class VisualizationDriver(object):
     def publish(self, name, msg):
         self.last_pubs[name] = time.time()
         self.channels[name].publish(msg)
+
+    def publish_path_curve(self, curve):
+        marker = self.marker_from_curve(curve, z=0.1, linewidth=0.09, color=ColorRGBA(0, 1, 1, 1), \
+            lifetime=1.0/float(self.get_info("path_search.curve_path")["rate_limit"]))
+        self.publish("path_search.curve_path", marker)
+
+    def marker_from_curve(self, curve, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., lifetime=10.0):
+        marker = Marker()
+        marker.header = Header(
+            stamp=rospy.Time.now(),
+            frame_id="base_link")
+
+        marker.ns = "Markers_NS"
+        marker.id = index
+        marker.type = Marker.LINE_STRIP
+        marker.action = 0 # action=0 add/modify object
+        marker.color = color
+        marker.lifetime = rospy.Duration.from_sec(lifetime)
+
+        marker.pose = Pose()
+        marker.pose.position.z = z
+        marker.scale = Vector3(linewidth, 1, 1)
+
+        # Fill the marker from the path.
+        sampling = [t for t in np.linspace(curve.min, curve.max, 50, endpoint=curve.endpoint)]
+        curvepts = [ curve(s) for s in sampling ]
+
+        points = []
+        for i in curvepts:
+            points.append(Point(float(i[0]), float(i[1]), 0))
+
+        marker.points = points
+        marker.colors = []
+
+        return marker
 
     def publish_best_path(self, best_path):
         marker = self.marker_from_path(best_path.states, z=0.1, linewidth=0.09, \
@@ -147,7 +187,7 @@ class VisualizationDriver(object):
 
         return marker
 
-    def marker_from_state(self, state, color=ColorRGBA(1, 0, 0, 1)):
+    def marker_from_state(self, state, color=ColorRGBA(1, 0, 0, 1), lifetime=10.0):
         """ pose is (Point2D(x,y),heading) """
         marker = Marker()
         marker.header = Header(
@@ -156,7 +196,7 @@ class VisualizationDriver(object):
         marker.ns = "navigator"
         marker.id = 0
         marker.action = 0
-        marker.lifetime = rospy.Duration.from_sec(10.)
+        marker.lifetime = rospy.Duration.from_sec(lifetime)
         marker.points = []
         marker.type = Marker.ARROW
         marker.color = color
@@ -165,7 +205,7 @@ class VisualizationDriver(object):
         marker.pose.position.x = state.x
         marker.pose.position.y = state.y
         marker.pose.orientation = Quaternion(*tf.transformations.quaternion_from_euler(0,0,state.theta))
-        marker.scale = Vector3(.5, .1, .1)
+        marker.scale = Vector3(1, .3, .3)
         return marker
 
     def publish_test_goal(self, goal, color):
@@ -194,6 +234,16 @@ class VisualizationDriver(object):
         
         marker_array = MarkerArray(markers=markers)
         self.publish("space_explorer.path", marker_array)
+
+    def publish_lookahead_circle(self, circle):
+        marker = self.marker_from_circle(circle, z=-.1,linewidth=0.05, color=ColorRGBA(0, 1, 0, 0.6), \
+                    lifetime=1.0/float(self.get_info("path_search.lookahead_circle")["rate_limit"]))
+        self.publish("path_search.lookahead_circle", marker)
+
+    def publish_path_line(self, circle_path):
+        marker = self.marker_from_path(circle_path.states, z=0.1, linewidth=0.09, color=ColorRGBA(1, 0, 0, .7),  \
+            lifetime=1.0/float(self.get_info("space_explorer.center_path")["rate_limit"]))
+        self.publish("space_explorer.center_path", marker)
 
     def marker_from_path(self, states, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., lifetime=10.0):
         marker = Marker()
@@ -250,5 +300,12 @@ class VisualizationDriver(object):
          lifetime = 1./float(self.get_info("goals.green_goal")["rate_limit"]))for i,goal in enumerate(goals)]
         marker_array = MarkerArray(markers=markers)
         self.publish("goals.green_goal", marker_array)
-	return
+        return
+
+    def publish_corridor_goal(self, goal):
+        goal_state = State(x=goal[0], y=goal[1], theta=goal[2], steering_angle=None, speed=None)
+        # marker = self.marker_from_state(goal_state,
+        #     lifetime=1.0/float(self.get_info("goals.corridor_goal")["rate_limit"]))
+        marker = self.marker_from_state(goal_state)
+        self.publish("goals.corridor_goal", marker)
 
