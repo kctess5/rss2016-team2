@@ -28,7 +28,7 @@ steering_prediction:
     polynomial_coefficients: [0.312, -0.953, 1.574]
 
 # these are bad guesses, waiting optimization
-max_linear_accel: 4
+max_linear_accel: 3
 max_linear_decel: -2
 max_angular_accel: 1.5
 # max_angular_velocity: 1.5
@@ -36,10 +36,10 @@ max_angular_velocity: 1.4
 
 # bounds on mechanical capabilities
 # 10mph ~= 4.47 m/s
-max_speed: 3.7
+max_speed: 2.5
 
 # min curve radius - used in the heuristic
-r_min: 0.8
+r_min: 0.87
 
 # these numbers have been optimized, don't change them
 max_deflection: 0.32 # DONT CHANGE
