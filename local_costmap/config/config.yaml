@@ -7,7 +7,7 @@ greenCam:
   upper_thresh: [80,255,255]
 
 goal_manager:
-  green_gp_topic: "/waypoint_markers"
+  green_gp_topic: "/closest_green_goal"
 
 
 space_explorer: 
