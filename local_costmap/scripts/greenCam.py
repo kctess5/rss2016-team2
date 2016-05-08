@@ -47,7 +47,7 @@ def debug_info(mask, img, hsv, pixels, vis = False):
 def pixel2world(row,col,width):
 	y = fourPL(A_y,B_y,C_y,D_y,row) # in meters
 	#x = fourPL(A_x,B_x,C_x,D_x,row)*(col-width/2.0)*inch2meter
-	x = A_m*y + A_b*(col-width/2.0)*inch2meter
+	x = M_x*y + B_x*(col-width/2.0)*inch2meter
 	return (x,y)
 
 def fourPL(A,B,C,D,x):
