@@ -21,7 +21,7 @@ inch2meter 		 = .0254
 HSV_lower_thresh = tuple([int(i) for i in param("greenCam.lower_thresh")])
 HSV_upper_thresh = tuple([int(i) for i in param("greenCam.upper_thresh")])
 MIN_AREA_THRESH = float(param("greenCam.min_area_thresh"))
-DEBUG		= bool(param("greenCam.debug"))
+DEBUG		= param("greenCam.debug")
 HORIZON 	= int(param("greenCam.horizon_row"))
 
 def create_lookup(height,width):
@@ -31,7 +31,8 @@ def debug_info(mask, img, hsv, pixels, vis = False):
 	if vis == True:
 		res = cv2.bitwise_and(img, img, mask=mask)
 		imshow("maskedRoi", res)
-	hsv_channels = cv2.split(hsv, mask=mask)
+	hsv_masked = cv2.bitwise_and(hsv,hsv,mask = mask)
+	hsv_channels = cv2.split(hsv_masked)
 	H_info = HminVal, HmaxVal, HminLoc, HmaxLoc = minMaxLoc(hsv_channels[0])
 	S_info = SminVal, SmaxVal, SminLoc, SmaxLoc = minMaxLoc(hsv_channels[1])
 	V_info = VminVal, VmaxVal, VminLoc, VmaxLoc = minMaxLoc(hsv_channels[2])
