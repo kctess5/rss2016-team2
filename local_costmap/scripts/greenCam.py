@@ -24,6 +24,9 @@ MIN_AREA_THRESH = float(param("greenCam.min_area_thresh"))
 DEBUG		= bool(param("greenCam.debug"))
 HORIZON 	= int(param("greenCam.horizon_row"))
 
+def create_lookup(height,width):
+	pass
+
 def debug_info(mask, img, hsv, pixels, vis = False):
 	if vis == True:
 		res = cv2.bitwise_and(img, img, mask=mask)
