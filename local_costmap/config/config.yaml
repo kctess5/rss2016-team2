@@ -8,8 +8,9 @@ greenCam:
   min_area_thresh: 200.0
   lower_thresh: [60,60,6]
   upper_thresh: [80,255,255]
-  debug: False
-  horizon_row: 200
+  debug: True
+  vis: True
+  horizon_row: 205
  
 space_explorer: 
   enabled: True

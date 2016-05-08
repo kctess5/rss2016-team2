@@ -16,12 +16,13 @@ A_y,B_y,C_y,D_y = tuple([float(i) for i in param("greenCam.row2y")])
 #A_x,B_x,C_x,D_x = tuple([float(i) for i in param("greenCam.row2width")])
 M_x, B_x = tuple([float(i) for i in param("greenCam.row2width")])
 
-
+feet2meter		 = .3034
 inch2meter 		 = .0254
 HSV_lower_thresh = tuple([int(i) for i in param("greenCam.lower_thresh")])
 HSV_upper_thresh = tuple([int(i) for i in param("greenCam.upper_thresh")])
 MIN_AREA_THRESH = float(param("greenCam.min_area_thresh"))
 DEBUG		= param("greenCam.debug")
+DEBUG_VIS       = param("greenCam.vis")
 HORIZON 	= int(param("greenCam.horizon_row"))
 
 def create_lookup(height,width):
@@ -30,7 +31,8 @@ def create_lookup(height,width):
 def debug_info(mask, img, hsv, pixels, vis = False):
 	if vis == True:
 		res = cv2.bitwise_and(img, img, mask=mask)
-		imshow("maskedRoi", res)
+		cv2.imshow("maskedRoi", res)
+		cv2.waitKey(1)
 	hsv_masked = cv2.bitwise_and(hsv,hsv,mask = mask)
 	hsv_channels = cv2.split(hsv_masked)
 	H_info = HminVal, HmaxVal, HminLoc, HmaxLoc = cv2.minMaxLoc(hsv_channels[0])
@@ -46,7 +48,7 @@ def debug_info(mask, img, hsv, pixels, vis = False):
 	
 
 def pixel2world(row,col,width):
-	y = fourPL(A_y,B_y,C_y,D_y,row) # in meters
+	y = fourPL(A_y,B_y,C_y,D_y,row)*feet2meter # in meters
 	#x = fourPL(A_x,B_x,C_x,D_x,row)*(col-width/2.0)*inch2meter
 	x = (M_x*row + B_x)*(col-width/2.0)*inch2meter
 	return (x,y)
@@ -79,7 +81,7 @@ def find_green(image):
 				closest_y = y
 				closest_centroid = [y,-1*x,0.0]
 	if DEBUG:
-		debug_info(mask ,roi, hsv_img, pixels, vis=False)
+		debug_info(mask ,roi, hsv_img, pixels, vis=DEBUG_VIS)
 	return Point(*closest_centroid), centroids
 
 
