@@ -9,6 +9,7 @@ import os
 from sensor_msgs.msg import LaserScan
 from rospy.numpy_msg import numpy_msg
 from std_msgs.msg import ColorRGBA
+from geometry_msgs.msg import Point as Point_msg
 
 # code from other files in this repo
 import navigator2 as navigator
@@ -439,22 +440,101 @@ class ObstacleMap(object):
 class GoalManager(object):
     """ Manages and tracks the car's concept of purpose in life
             - This should wrap the corridor detector and the vision based goal detection
-            - Shraman, you should improve this with goal tracking, etc
     """
-    def __init__(self, viz):
-        self.navigator = navigator.Navigator(viz)
+
+    def __init__(self, viz, pass_rad=0.25, locality_rad=100, max_pts=5):
+        """ Tunable parameters are kwargs above:
+                - pass_rad = the radius threshold around the car for which a goal point
+                    is considered "passed"
+                - locality_rad = the radius threshold around each goal point for which a new
+                    goal point is mapped as the same
+                - max_pts = maximum number of points allowed in gp buffer
+        """
+        # self.navigator = navigator.Navigator(viz)
         self.navigator3 = ScanMaximaNavigator(viz)
         self.origin = None
+
+        # TODO: Make these range-query trees/numpy arrays for larger max_pts value
+        self.green_gps = []
+        self.corr_gps = []
+
+        self.pass_rad = pass_rad
+        self.locality_rad = locality_rad
+        self.green_sub = rospy.Subscriber(param("goal_manager.green_gp_topic"), Point_msg, self.cb_green)
+
+    def cb_green(self, pt):
+        """ Processes the goal points produced by Fernando's green patch detector
+        """
+        self.match((pt.x, pt.y, pt.z), "green")
+
+    def match(self, new_pt, gp_type):
+        """ Matches goal point with an existing one or appends to appropriate DS
+                if new.
+            - new_pt: The new point to integrate into managed points.
+                Assumes point is in indexable (x,y,orientation) format
+            - gp_type: either "green" or "corridor"
+        """
+        # NOTE: We L1 norm instead of L2 radius for fast calculation
+
+        if new_pt == None:
+            return
+        x,y,orient = new_pt
+        gp_list = self.green_gps if gp_type=="green" else self.corr_gps
+
+        for i,gp in enumerate(gp_list):
+            if abs(gp[0] - x) <= self.locality_rad and abs(gp[1] - y) <= self.locality_rad:
+                # Update the point if match found
+                gp_list[i] = new_pt
+                return
+
+        # Otherwise it's a new point, append
+        gp_list.append(new_pt)
+        return
 
     def next_goal(self):
         """ Return the position of the next goal in local coordinates
                 - for now, this directly calls the corridor detector with no smoothing
         """
-        # gp = self.navigator.goalpoint()
-        gp = self.navigator3.goalpoint()
-        if gp == None:
+        new_gp = self.navigator3.goalpoint()
+        self.match(new_gp, "corridor")
+
+        # Car stops if no goal points
+        if len(self.green_gps) == 0 and len(self.corr_gps) == 0:
             return None
-        return State(x=gp[0], y=gp[1], theta=gp[2], steering_angle=None, speed=None)
+
+        # Prune out all passed points TODO: should this go before matching?
+        self.check_passed()
+
+        # Sort the individual goal point management lists
+        # self.sort_gpls()
+
+        # For now, always prioritize green patches
+        if len(self.green_gps) > 0:
+            target_x, target_y, _ = self.green_gps[0]
+        else:
+            target_x, target_y, _ = self.corr_gps[0]
+
+        # Publish target coordinates with direction of next goal point
+        return State(x=target_x, y=target_y, theta=0, steering_angle=None, speed=None)
+
+    def check_passed(self):
+        """ Remove goal points if passed
+        """
+        # Criteria for passing a green patch
+        for i,gp in enumerate(self.green_gps):
+            if gp[0] <= self.pass_rad or gp[1] <= self.pass_rad:
+                gpl.pop(i)
+
+        # Criteria for passing a corridor
+        for i,gp in enumerate(self.corr_gps):
+            if gp[0] <= self.pass_rad or gp[1] <= self.pass_rad:
+                gpl.pop(i)
+
+    def sort_gpls(self):
+        """ Sort goal points by Euclidean distance to car
+        """
+        self.green_gps.sort(key=lambda g: g[0]**2 + g[1]**2)
+        self.corr_gps.sort(key=lambda g: g[0]**2 + g[1]**2)
 
     def scan_callback(self, data):
         self.navigator3.scan_callback(data)
