@@ -1074,16 +1074,28 @@ class ChallengeController(DirectControlModule):
         while True:
             if self.new_data:
                 self.computing_control = True
-                if self.control_monitor.index % 10 == 1:
-                    print ("planning fps: ", self.control_monitor.fps())
-                    self.optimize_time_limit()
-
+                
                 self.scan_time = self.scanner_data.header.stamp.to_sec()
+
+                start_time = rospy.get_rostime().to_sec()
                 # update data sources
                 self.obstacles.scan_callback(self.scanner_data)
+                obstacle_time = rospy.get_rostime().to_sec()
                 self.goals.scan_callback(self.scanner_data)
+                goal_time = rospy.get_rostime().to_sec()
                 # compute control actions
                 self.compute_control()
+                control_time = rospy.get_rostime().to_sec()
+
+                if self.control_monitor.index % 10 == 1:
+                    print()
+                    print ("average planning fps: ", self.control_monitor.fps())
+                    self.optimize_time_limit()
+                    print("last cycle time: total:", round(control_time - start_time,4), 's')
+                    print("   - obstacles :", round(obstacle_time - start_time,4), 's')
+                    print("   - goals     :", round(goal_time-obstacle_time,4), 's')
+                    print("   - control   :", round(control_time-goal_time,4), 's')
+
 
                 # house keeping
                 self.control_monitor.step()
@@ -1120,10 +1132,8 @@ class ChallengeController(DirectControlModule):
         deflections = map(lambda x: abs(x.deflection), circle_path.states)
         max_deflection = max(deflections)
 
-        # dt = rospy.get_rostime().to_sec() - self.scan_time
-        # print(dt)
         start_state = circle_path.states[0]
-        # start_state = self.integrate_forward(dt)
+
         #TODO: modify this depending on path curvature
         L = param("space_explorer.max_pursuit_radius")*np.cos(max_deflection)
         L = max(L, param("space_explorer.min_pursuit_radius"))
