@@ -13,8 +13,8 @@ from cv_bridge import CvBridge, CvBridgeError
 #line = m = .1462143 and -28.59338
 
 A_y,B_y,C_y,D_y = tuple([float(i) for i in param("greenCam.row2y")])
-#A_x,B_x,C_x,D_x = tuple([float(i) for i in param("greenCam.row2width")])
-M_x, B_x = tuple([float(i) for i in param("greenCam.row2width")])
+A_x,B_x,C_x,D_x = tuple([float(i) for i in param("greenCam.row2width")])
+#M_x, B_x = tuple([float(i) for i in param("greenCam.row2width")])
 
 feet2meter		 = .3034
 inch2meter 		 = .0254
@@ -35,9 +35,9 @@ def debug_info(mask, img, hsv, pixels, vis = False):
 		cv2.waitKey(1)
 	hsv_masked = cv2.bitwise_and(hsv,hsv,mask = mask)
 	hsv_channels = cv2.split(hsv_masked)
-	H_info = HminVal, HmaxVal, HminLoc, HmaxLoc = cv2.minMaxLoc(hsv_channels[0])
-	S_info = SminVal, SmaxVal, SminLoc, SmaxLoc = cv2.minMaxLoc(hsv_channels[1])
-	V_info = VminVal, VmaxVal, VminLoc, VmaxLoc = cv2.minMaxLoc(hsv_channels[2])
+	H_info = HminVal, HmaxVal, HminLoc, HmaxLoc = cv2.minMaxLoc(hsv_channels[0], mask=mask)
+	S_info = SminVal, SmaxVal, SminLoc, SmaxLoc = cv2.minMaxLoc(hsv_channels[1], mask=mask)
+	V_info = VminVal, VmaxVal, VminLoc, VmaxLoc = cv2.minMaxLoc(hsv_channels[2], mask=mask)
 	print ("\n valid points:", len(pixels))
 	print ("\n minVal, maxVal, minLoc, maxLoc \n")
 	print ("H:", H_info)
@@ -49,8 +49,8 @@ def debug_info(mask, img, hsv, pixels, vis = False):
 
 def pixel2world(row,col,width):
 	y = fourPL(A_y,B_y,C_y,D_y,row)*feet2meter # in meters
-	#x = fourPL(A_x,B_x,C_x,D_x,row)*(col-width/2.0)*inch2meter
-	x = (M_x*row + B_x)*(col-width/2.0)*inch2meter
+	x = (col-width/2.)/fourPL(A_x,B_x,C_x,D_x,row)*inch2meter
+	#x = 1./(M_x*row + B_x)*(col-width/2.0)*inch2meter
 	return (x,y)
 
 def fourPL(A,B,C,D,x):
@@ -58,7 +58,7 @@ def fourPL(A,B,C,D,x):
 
 def find_green(image):
 	height,width = image.shape[:2]
-	roi = image[HORIZON/2:,:]
+	roi = image[HORIZON:,:]
 	hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
 
 	mask = cv2.inRange(hsv_img, HSV_lower_thresh, HSV_upper_thresh)

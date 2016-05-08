@@ -6,6 +6,6 @@
 	<include file="$(find zed_wrapper)/launch/zed.launch"></include>
 
 	<!-- greenCam node -->
-	<node name="greenCam" pkg="local_costmap" type="greenCam.py" />
+	<node name="greenCam" pkg="local_costmap" type="greenCam.py" output="screen" />
 
 </launch>
