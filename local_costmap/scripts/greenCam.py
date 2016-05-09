@@ -29,11 +29,12 @@ def create_lookup(height,width):
 	pass
 
 def debug_info(mask, img, hsv, pixels, vis = False):
-	if vis == True:
-		res = cv2.bitwise_and(img, img, mask=mask)
-		cv2.imshow("maskedRoi", res)
-		cv2.waitKey(1)
 	hsv_masked = cv2.bitwise_and(hsv,hsv,mask = mask)
+	if vis == True:
+		#res = cv2.bitwise_and(img, img, mask=mask)
+		#cv2.imshow("maskedRoi", res)
+		cv2.imshow("maskedHSV", hsv_masked)
+		cv2.waitKey(1)
 	hsv_channels = cv2.split(hsv_masked)
 	H_info = HminVal, HmaxVal, HminLoc, HmaxLoc = cv2.minMaxLoc(hsv_channels[0], mask=mask)
 	S_info = SminVal, SmaxVal, SminLoc, SmaxLoc = cv2.minMaxLoc(hsv_channels[1], mask=mask)

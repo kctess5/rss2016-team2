@@ -516,7 +516,7 @@ class GoalManager(object):
             target_x, target_y, _ = self.green_gps[0]
         else:
             target_x, target_y, _ = self.corr_gps[0]
-
+	print ("next goal:", target_x, target_y)
         # Publish target coordinates with direction of next goal point
         return State(x=target_x, y=target_y, theta=0, steering_angle=None, speed=None)
 

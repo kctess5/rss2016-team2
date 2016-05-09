@@ -6,8 +6,8 @@ greenCam:
   #row2width: [.1462143, -28.59338] #this is linear map
   row2y: [43090100, 7.9442, 32.0097, 2.50733]
   min_area_thresh: 200.0
-  lower_thresh: [40,40,6]
-  upper_thresh: [90,255,255]
+  lower_thresh: [50,60,6]
+  upper_thresh: [90,110,200]
   debug: False
   vis: False
   horizon_row: 205
@@ -247,5 +247,8 @@ navigator3:
   laser_max: 8
   error_range: 60
   contiguous_min: 40
+
+goal_manager:
+  green_gp_topic: /closest_green_goal
 
 ...
