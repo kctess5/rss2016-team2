@@ -61,7 +61,7 @@ navigator:
   # turn_right: True
   # removes this percentages of scans
   trim_percentage: 0.1
-  show_local_viz: True
+  show_local_viz: False
   laser_max: 8.0
   error_range: 60
   contiguous_min: 47
