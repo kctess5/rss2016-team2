@@ -683,10 +683,10 @@ class SpaceExploration(HeuristicSearch):
         return Circle(x=g.x, y=g.y, radius=r, deflection=0)
 
     def goal_met(self, state, goal_state):
-        if euclidean_distance(goal_state, Point(x=0,y=0)) > 4:
-            if euclidean_distance(state, goal_state) < 2:
-                # print("test")
-                return True
+        # if euclidean_distance(goal_state, Point(x=0,y=0)) > 4:
+        #     if euclidean_distance(state, goal_state) < 2:
+        #         # print("test")
+        #         return True
             
         return self.overlap(state, goal_state, float(param("path_search.overlap_percentage_goal")))
 

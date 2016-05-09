@@ -90,12 +90,6 @@ class ScanMaximaNavigator(object):
 		else:
 			return param("navigator." + key)
 
-	def new_goal_point(self):
-		self.angle_buffer
-
-	def smoothed_goalpoint(self):
-		pass
-
 	def scan_callback(self, laser):
 		# filter the laser data to only include a subset of useful data
 		num_scans = len(laser.ranges)
@@ -182,7 +176,6 @@ class ScanMaximaNavigator(object):
 			median_angle = np.median(angles)
 
 			if np.isinf(median_angle) or np.isinf(median_distance):
-				print("NONONONONe")
 				self.goal_point == None
 				return
 
@@ -195,7 +188,7 @@ class ScanMaximaNavigator(object):
 
 		
 		angle_max = self.get_nav_param("goal_angle_max")
-		angle_min = -angle_max
+		angle_min = self.get_nav_param("goal_angle_min")
 		candidate_peak_indices = np.where((angles[peaks] > angle_min)
 			& (angles[peaks] < angle_max)
 			& (filtered_ranges[peaks] > self.get_nav_param("distance_threshold")))
