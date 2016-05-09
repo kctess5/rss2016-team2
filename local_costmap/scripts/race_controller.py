@@ -457,12 +457,12 @@ class GoalManager(object):
         """
         # Criteria for passing a green patch
         for i,gp in enumerate(self.green_gps):
-            if gp[0] <= self.pass_rad or gp[1] <= self.pass_rad:
+            if abs(gp[0]) <= self.pass_rad or abs(gp[1]) <= self.pass_rad:
                 gpl.pop(i)
 
         # Criteria for passing a corridor
         for i,gp in enumerate(self.corr_gps):
-            if gp[0] <= self.pass_rad or gp[1] <= self.pass_rad:
+            if abs(gp[0]) <= self.pass_rad or abs(gp[1]) <= self.pass_rad:
                 gpl.pop(i)
 
     def sort_gpls(self):
