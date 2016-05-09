@@ -890,17 +890,15 @@ class ChallengeController(DirectControlModule):
 
         self.lookahead_circle = pursuit_circle
 
-        # if not spline_path == None:
-        #     # print("test")
-        #     intersection = spline_circle_intersection(pursuit_circle, spline_path)
-        # else:
-        # if intersection == None:
+        if not spline_path == None:
+            intersection = spline_circle_intersection(pursuit_circle, spline_path)
+        else:
             # find intersection between the pure pursuit circle and the path
-        intersection = None
-        for i in xrange(1,len(circle_path.states)):
-            intersection = circle_segment_intersection(pursuit_circle, circle_path.states[i-1], circle_path.states[i])
-            if not intersection == None:
-                break
+            intersection = None
+            for i in xrange(1,len(circle_path.states)):
+                intersection = circle_segment_intersection(pursuit_circle, circle_path.states[i-1], circle_path.states[i])
+                if not intersection == None:
+                    break
 
         if intersection == None:
             return None
@@ -977,8 +975,20 @@ class ChallengeController(DirectControlModule):
         t = self.space_explorer.search(time_limit=param("path_search.time_limit"))
 
         circle_path = self.space_explorer.best()
-        spline_path = parameterize_path(circle_path)
-        next_control_state = self.pure_pursuit_control(circle_path, spline_path)
+
+        if param("path_following.prune_distance") > 0:
+            print("prune")
+            last = circle_path.states[-1]
+            downsampled_control = []
+            for i in circle_path.states:
+                if euclidean_distance(last, i) > param("path_following.prune_distance") \
+                or abs(i.deflection) > param("path_following.max_prune_deflection"):
+                    downsampled_control.append((i.x, i.y))
+                    last = i
+            circle_path = Path(states=downsampled_control)
+
+        # spline_path = parameterize_path(circle_path)
+        next_control_state = self.pure_pursuit_control(circle_path, None)
 
         if self.viz.should_visualize("path_search.curve_path") and not spline_path == None:
             self.viz.publish_path_curve(spline_path)

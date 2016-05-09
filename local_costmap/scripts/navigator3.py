@@ -209,7 +209,7 @@ class ScanMaximaNavigator(object):
 		point = polar_to_euclid(angles[picked_peak], filtered_ranges[picked_peak] - 1.5)
 		
 		self.set_goal_point(np.array([float(point[0]), float(point[1]), float(angles[picked_peak])]))
-
+		# print(float(angles[picked_peak]))
 		if self.local_viz:
 			with self.lock:
 				self.peaks = peaks
