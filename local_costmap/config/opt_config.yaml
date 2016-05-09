@@ -1,0 +1,150 @@
+---
+greenCam:
+  row2y: [323.9,.4321479,2.967,-46.14]
+  row2width: [11450.0,.2874673,3.5e-16,-.07852111]
+  min_area_thresh: 200.0
+  lower_thresh: [60,60,6]
+  upper_thresh: [80,255,255]
+
+goal_manager:
+  green_gp_topic: "/closest_green_goal"
+
+# obstacle map size and discretization (bins/meter)
+obstacle_map:
+  discretization: 6
+  xmin: -3
+  xmax: 10
+  ymin: -8
+  ymax: 8
+  # minimum distance to nearest obstacle to be considered admissible
+  min_distance: 0.25
+  vizualize_distmap: False
+
+navigator:
+  optimization:
+    gaussian_width:
+      type: "float"
+      bounds: [0.01, 0.20]
+      step: 0.02
+    median_width:
+      type: "float"
+      bounds: [0.01, 0.29]
+      step: 0.02
+    distance_threshold:
+      type: "float"
+      bounds: [3.1, 5.6]
+      step: 0.2
+    goal_angle_max:
+      type: "float"
+      bounds: [1.0, 1.5] 
+      step: 0.04
+    contiguous_min: 
+      type: "int"
+      bounds: [30,75]
+      step: 4
+    laser_max: 
+      type: "float"
+      bounds: [6, 11]
+      step: 0.5
+
+  downsample: 2
+  # widths are in percentages compared to size of data
+  # gaussian_width: 0.15
+  gaussian_width: 0.27
+  # median_width: 0.17
+  median_width: 0.05
+  # minimum distance to consider a maxima a corridor
+  distance_threshold: 3.6
+  # min/max angles to be considered
+  goal_angle_max: 1.0
+  goal_angle_min: -1.7
+  # turns right if true, left otherwise
+  # turn_right: True
+  # removes this percentages of scans
+  trim_percentage: 0.1
+  show_local_viz: False
+  laser_max: 6.0
+  error_range: 60
+  contiguous_min: 47
+  use_prefiltering: True
+  turn_right: True
+  # accumulates this many samples for 
+  smooth_samples: 3
+
+
+
+
+path_search:
+  # end path circle must overlap by this amount with the goal circle
+  overlap_percentage_goal: 0.15
+  # radii limits for search circles
+  # if the first constraint is too severe, use this instead
+  min_radius: 0.6
+  hard_min_radius: 0.34
+  max_circle_size: 2.0
+  # multiplicative penalty factor for being lower than the min_radius
+  soft_limit_penalty: 1.7
+  # limits on the search space
+  max_distance: 12
+  back_limit: -1.0
+  # search parameters
+  branch_factor: 15
+  heuristic_bias: 1.2
+  # the circle cost is a factor trigonometrically linked to
+  # deflection angle relative to parent, scaled by this factor
+  # too high and it plans bad paths, to low and excess jerk
+  deflection_coeff: 0.1
+  max_pursuit_radius: 2.0
+  min_pursuit_radius: 0.7
+  # search time limit
+  time_limit: 0.17
+  # angular bounds to sampling on the first circle
+  sampling_bounds_initial: [-1.1,1.1]
+
+path_following:
+  # pure pursuit scales lookahead based off deflection within this distance
+  nearby_distance: 2.5
+  max_prune_deflection: 0.2
+  prune_distance: 0.0
+
+  # if there is now path, and the car is stopped, it will
+  # start to back up in a straight line at this speed
+  backup_speed: -0.8
+
+  # max speed given curvature is scaled by this factor for safety
+  speed_safety: 0.7
+
+viz:
+  topics:
+    goals:
+      corridor_goal:
+        rate_limit: 30
+      green_goal:
+        rate_limt: 5
+    path_search:
+      explored:
+        rate_limit: 5
+      path:
+        rate_limit: 10
+      center_path:
+        rate_limit: 30
+      lookahead_circle:
+        rate_limit: 10
+      speed:
+        rate_limit: 10
+      steering:
+        rate_limit: 10
+      curve_path:
+        rate_limit: 10
+
+epsilon: 0.001
+
+runtime_specific:
+  racecar:
+    scan_topic: "/scan"
+    racecar_env: True
+  not_racecar:
+    # scan_topic: "/racecar/laser/scan"
+    # scan_topic: "/scan_throttle"
+    scan_topic: "/scan"
+    racecar_env: False

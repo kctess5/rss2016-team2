@@ -1,0 +1,132 @@
+err: 1270.021528378998
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.36, 1.2500000000000002, 0.39, 52.0, 5.5, 1.0, 6.399999999999999]
+err: 608.6433688981766
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.18, 1.2000000000000002, 0.32999999999999996, 60.0, 8.0, 1.0, 4.3999999999999995]
+err: 149.17653562004838
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.3, 1.2000000000000002, 0.12, 20.0, 8.5, 1.0, 3.1999999999999997]
+err: 93.27938513270995
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.32999999999999996, 1.1, 0.09, 68.0, 8.5, 0.0, 3.1999999999999997]
+err: 33.636689139135754
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.0, 1.1500000000000001, 0.36, 52.0, 5.0, 1.0, 2.0]
+err: 46.454040902762685
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.39, 1.1500000000000001, 0.39, 60.0, 9.0, 0.0, 2.8]
+err: 34.448682193845826
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.0, 1.1500000000000001, 0.42, 24.0, 5.0, 1.0, 2.0]
+err: 44.14504121240345
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.09, 1.05, 0.06, 36.0, 7.5, 0.0, 2.0]
+err: 34.2473596090666
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.12, 1.2000000000000002, 0.21, 20.0, 6.0, 0.0, 2.4]
+err: 46.56200121997487
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.21, 1.2000000000000002, 0.06, 52.0, 8.0, 0.0, 2.8]
+err: 43.64518931370807
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.21, 1.3000000000000003, 0.03, 68.0, 5.5, 0.0, 2.8]
+err: 44.224351620139004
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.36, 1.1, 0.18, 44.0, 5.0, 0.0, 2.8]
+err: 46.460457188166636
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.06, 1.3000000000000003, 0.12, 56.0, 6.5, 0.0, 2.8]
+err: 29.258769865266952
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.0, 1.1500000000000001, 0.18, 56.0, 8.5, 1.0, 2.8]
+err: 34.434613721865745
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.24, 1.3000000000000003, 0.44999999999999996, 52.0, 5.0, 0.0, 2.4]
+err: 33.58056556338503
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.0, 1.1, 0.18, 24.0, 5.5, 0.0, 3.5999999999999996]
+err: 35.07163201526545
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.18, 1.2500000000000002, 0.12, 20.0, 5.5, 1.0, 2.0]
+err: 36.77226332170161
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.36, 1.2000000000000002, 0.15, 40.0, 8.0, 0.0, 2.4]
+err: 45.724997278471875
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.03, 1.1, 0.48, 40.0, 5.0, 1.0, 2.4]
+err: 34.98047660004632
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.24, 1.0, 0.0, 48.0, 8.5, 0.0, 2.4]
+err: 44.09856703795731
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.27, 1.0, 0.42, 20.0, 6.5, 0.0, 2.0]
+err: 46.45558029256965
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.39, 1.2500000000000002, 0.03, 52.0, 9.5, 0.0, 2.8]
+err: 46.52659651410082
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.15, 1.2000000000000002, 0.44999999999999996, 68.0, 8.5, 0.0, 2.8]
+err: 36.92998335101873
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.32999999999999996, 1.3000000000000003, 0.21, 60.0, 7.0, 0.0, 2.4]
+err: 44.03709750733985
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.21, 1.3000000000000003, 0.44999999999999996, 40.0, 6.0, 0.0, 2.8]
+err: 36.77226332170161
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.21, 1.3000000000000003, 0.06, 40.0, 8.0, 0.0, 2.0]
+err: 44.03709750733985
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.3, 1.1500000000000001, 0.27, 68.0, 6.0, 0.0, 2.8]
+err: 36.73685861582756
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.3, 1.2000000000000002, 0.36, 52.0, 8.5, 0.0, 2.4]
+err: 43.92146037824169
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.39, 1.1, 0.39, 56.0, 9.0, 0.0, 2.0]
+err: 36.73685861582756
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.09, 1.2500000000000002, 0.06, 40.0, 8.5, 0.0, 2.0]
+err: 46.454040902762685
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.15, 1.2500000000000002, 0.32999999999999996, 24.0, 9.0, 0.0, 2.8]
+err: 36.67071928989337
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.03, 1.1, 0.03, 52.0, 6.5, 0.0, 2.0]
+err: 33.85545141543481
+names: [median_width, goal_angle_max, gaussian_width, contiguous_min, laser_max, use_prefiltering,
+  distance_threshold]
+particle: [0.18, 1.2000000000000002, 0.24, 36.0, 5.5, 0.0, 2.4]
