@@ -16,23 +16,23 @@ class VisualizationDriver(object):
         self.channels = {}
         self.last_pubs = {}
 
-        self.add_publisher("space_explorer.explored", MarkerArray)
-        self.add_publisher("space_explorer.path", MarkerArray)
-        self.add_publisher("space_explorer.center_path", Marker)
+        self.add_publisher("path_search.explored", MarkerArray)
+        self.add_publisher("path_search.path", MarkerArray)
+        self.add_publisher("path_search.center_path", Marker)
 
         self.add_publisher("path_search.curve_path", Marker)
-        self.add_publisher("path_search.best_path", Marker)
-        self.add_publisher("path_search.complete_paths", MarkerArray)
-        self.add_publisher("path_search.viable_paths", MarkerArray)
+        # self.add_publisher("path_search.best_path", Marker)
+        # self.add_publisher("path_search.complete_paths", MarkerArray)
+        # self.add_publisher("path_search.viable_paths", MarkerArray)
         self.add_publisher("path_search.speed", Float32)
         self.add_publisher("path_search.steering", Float32)
         self.add_publisher("path_search.test_goal", Marker)
         self.add_publisher("path_search.lookahead_circle", Marker)
 
-        self.add_publisher("goals.next_goal", Marker)
-        self.add_publisher("goals.walls", Marker)
-        self.add_publisher("goals.imagined_wall", Marker)
-        self.add_publisher("goals.corridors", Marker)
+        # self.add_publisher("goals.next_goal", Marker)
+        # self.add_publisher("goals.walls", Marker)
+        # self.add_publisher("goals.imagined_wall", Marker)
+        # self.add_publisher("goals.corridors", Marker)
 
         self.add_publisher("goals.green_goal", Marker)
         self.add_publisher("goals.corridor_goal", Marker)
@@ -220,20 +220,20 @@ class VisualizationDriver(object):
         # print(len(explored))
 
         markers += [self.marker_from_circle(circle, index=i, linewidth=0.01, color=ColorRGBA(0, 1, 0, 0.1), \
-                    lifetime=1.0/float(self.get_info("space_explorer.explored")["rate_limit"]))
+                    lifetime=1.0/float(self.get_info("path_search.explored")["rate_limit"]))
                     for i, circle in enumerate(explored)]
         marker_array = MarkerArray(markers=markers)
 
-        self.publish("space_explorer.explored", marker_array)
+        self.publish("path_search.explored", marker_array)
 
     def publish_path_circles(self, circle_path):
         markers = [self.marker_clear_all()]
         markers += [self.marker_from_circle(circle, index=i, linewidth=0.05, color=ColorRGBA(1, 0, 0, 0.4), \
-                    lifetime=1.0/float(self.get_info("space_explorer.path")["rate_limit"]))
+                    lifetime=1.0/float(self.get_info("path_search.path")["rate_limit"]))
                     for i, circle in enumerate(circle_path.states)]
         
         marker_array = MarkerArray(markers=markers)
-        self.publish("space_explorer.path", marker_array)
+        self.publish("path_search.path", marker_array)
 
     def publish_lookahead_circle(self, circle):
         marker = self.marker_from_circle(circle, z=-.1,linewidth=0.05, color=ColorRGBA(0, 1, 0, 0.6), \
@@ -242,8 +242,8 @@ class VisualizationDriver(object):
 
     def publish_path_line(self, circle_path):
         marker = self.marker_from_path(circle_path.states, z=0.1, linewidth=0.09, color=ColorRGBA(1, 0, 0, .7),  \
-            lifetime=1.0/float(self.get_info("space_explorer.center_path")["rate_limit"]))
-        self.publish("space_explorer.center_path", marker)
+            lifetime=1.0/float(self.get_info("path_search.center_path")["rate_limit"]))
+        self.publish("path_search.center_path", marker)
 
     def marker_from_path(self, states, index=0, linewidth=0.1, color=ColorRGBA(1, 0, 0, 1), z=0., lifetime=10.0):
         marker = Marker()

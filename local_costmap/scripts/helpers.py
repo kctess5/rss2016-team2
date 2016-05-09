@@ -145,6 +145,11 @@ def param(raw_name):
     memo_table[raw_name] = param
     return param
 
+def euclid_to_polar(xs, ys):
+    rs = np.sqrt(xs*xs+ys*ys)
+    thetas = np.arctan(ys/xs)
+    return (rs, thetas)
+
 def polar_to_euclid(angles, ranges):
     xs = ranges * np.cos(angles)
     ys = ranges * np.sin(angles)
@@ -252,11 +257,12 @@ def collinear(s1, s2, angle_error, distance_error):
 
 class FPSCounter(object):
     """docstring for FPSCounter"""
-    def __init__(self, enabled=True, size=10):
+    def __init__(self, enabled=True, size=10, no_fix=False):
         self.buffer = np.zeros(size)
         self.index = 0
         self.last_step = rospy.get_rostime().to_sec()
         self.enabled = enabled
+        self.no_fix = no_fix
 
     def step(self):
         if self.enabled:
@@ -272,6 +278,9 @@ class FPSCounter(object):
             fps = 1.0 / m
         else:
             fps = 30.0
+
+        if self.no_fix:
+            return fps
         
         if fps < 2.0 or fps > 40.0:
             fps = 30.0
@@ -283,6 +292,32 @@ class FPSCounter(object):
 
         # fps = 1.0 / m
         # return round(float(self.count) / (rospy.get_rostime().to_sec() - self.start_time), 2)
+
+import time
+
+class FPSCounter2(object):
+    """docstring for FPSCounter"""
+    def __init__(self, size=100):
+        self.buffer = np.zeros(size)
+        self.index = 0
+        self.last_step = time.time()
+
+    def step(self):
+        t = time.time()
+        delta = t - self.last_step
+        self.last_step = t
+        self.buffer[self.index % len(self.buffer)] = delta
+        self.index += 1
+
+    def fps(self):
+        m = np.mean(self.buffer)
+        if m > 0:
+            return 1.0 / m
+        else:
+            return 0.0
+
+        if self.no_fix:
+            return fps
 
 class FrameBuffer:
     # bins/meter, (meters), (meters)

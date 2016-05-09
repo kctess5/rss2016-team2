@@ -1,6 +1,6 @@
 <launch>
 	<param name="log_level" value="INFO"/>
-	<rosparam command="load" ns="local_costmap" file="$(find local_costmap)/config/config.yaml" />
+	<rosparam command="load" ns="local_costmap" file="$(find local_costmap)/config/opt_config.yaml" />
 	<rosparam command="load" ns="dynamics" file="$(find local_costmap)/config/dynamics.yaml" />
 
 	<node name="scan_throttle" type="throttle" pkg="topic_tools" args="messages /scan 20 /scan_throttle"/>
