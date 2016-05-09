@@ -1,13 +1,18 @@
 ---
 greenCam:
-  row2y: [323.9,.4321479,2.967,-46.14]
-  row2width: [11450.0,.2874673,3.5e-16,-.07852111]
+  #row2y: [323.9,.4321479,2.967,-46.14] #original perspective
+  #row2width: [11450.0,.2874673,3.5e-16,-.07852111] #original perspective
+  row2width: [-.581414, 5.5171414, 325.6941, 39.80873] #this is 4pl map
+  #row2width: [.1462143, -28.59338] #this is linear map
+  row2y: [43090100, 7.9442, 32.0097, 2.50733]
   min_area_thresh: 200.0
-  lower_thresh: [60,60,6]
-  upper_thresh: [80,255,255]
-  debug: True
+  lower_thresh: [40,40,6]
+  upper_thresh: [90,255,255]
+  debug: False
+  vis: False
+  horizon_row: 205
 
-goal_manager:
+ goal_manager:
   green_gp_topic: "/waypoint_markers"
 
 space_explorer: 
@@ -17,7 +22,7 @@ space_explorer:
   # if the first constraint is too severe, use this instead
   hard_min_radius: 0.4
   # multiplicative penalty factor for being lower than the min_radius
-  soft_limit_penalty: 1.8
+  soft_limit_penalty: 1.5
   branch_factor: 15
   max_distance: 12
   back_limit: -1.0
@@ -223,7 +228,6 @@ emergency:
   # breaks as fast as possible while following the old path. This damp factor is applied to
   # steering to potentially smooth the path as the car stops. Set to 1 to follow original path
   stop_path_steering_damp_factor: 1.0
-
   # backu
 
 navigator3:

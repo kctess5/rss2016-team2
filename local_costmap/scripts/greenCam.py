@@ -9,24 +9,35 @@ import cv2
 import numpy
 from cv_bridge import CvBridge, CvBridgeError
 
-A_y,B_y,C_y,D_y = tuple([float(i) for i in param("greenCam.row2y")])
-A_x,B_x,C_x,D_x = tuple([float(i) for i in param("greenCam.row2width")]) 
+#43090100, 7.9442, 32.0097, 2.50733
+#line = m = .1462143 and -28.59338
 
+A_y,B_y,C_y,D_y = tuple([float(i) for i in param("greenCam.row2y")])
+A_x,B_x,C_x,D_x = tuple([float(i) for i in param("greenCam.row2width")])
+#M_x, B_x = tuple([float(i) for i in param("greenCam.row2width")])
+
+feet2meter		 = .3034
 inch2meter 		 = .0254
 HSV_lower_thresh = tuple([int(i) for i in param("greenCam.lower_thresh")])
 HSV_upper_thresh = tuple([int(i) for i in param("greenCam.upper_thresh")])
 MIN_AREA_THRESH = float(param("greenCam.min_area_thresh"))
-DEBUG		= bool(param("greenCam.debug"))
+DEBUG		= param("greenCam.debug")
+DEBUG_VIS       = param("greenCam.vis")
+HORIZON 	= int(param("greenCam.horizon_row"))
+
+def create_lookup(height,width):
+	pass
 
 def debug_info(mask, img, hsv, pixels, vis = False):
 	if vis == True:
 		res = cv2.bitwise_and(img, img, mask=mask)
-		imshow("maskedRoi", res)
-
-	hsv_channels = cv2.split(hsv, mask=mask)
-	H_info = HminVal, HmaxVal, HminLoc, HmaxLoc = minMaxLoc(hsv_channels[0])
-	S_info = SminVal, SmaxVal, SminLoc, SmaxLoc = minMaxLoc(hsv_channels[1])
-	V_info = VminVal, VmaxVal, VminLoc, VmaxLoc = minMaxLoc(hsv_channels[2])
+		cv2.imshow("maskedRoi", res)
+		cv2.waitKey(1)
+	hsv_masked = cv2.bitwise_and(hsv,hsv,mask = mask)
+	hsv_channels = cv2.split(hsv_masked)
+	H_info = HminVal, HmaxVal, HminLoc, HmaxLoc = cv2.minMaxLoc(hsv_channels[0], mask=mask)
+	S_info = SminVal, SmaxVal, SminLoc, SmaxLoc = cv2.minMaxLoc(hsv_channels[1], mask=mask)
+	V_info = VminVal, VmaxVal, VminLoc, VmaxLoc = cv2.minMaxLoc(hsv_channels[2], mask=mask)
 	print ("\n valid points:", len(pixels))
 	print ("\n minVal, maxVal, minLoc, maxLoc \n")
 	print ("H:", H_info)
@@ -37,8 +48,9 @@ def debug_info(mask, img, hsv, pixels, vis = False):
 	
 
 def pixel2world(row,col,width):
-	y = fourPL(A_y,B_y,C_y,D_y,row)*inch2meter
-	x = fourPL(A_x,B_x,C_x,D_x,row)*(col-width/2.0)*inch2meter
+	y = fourPL(A_y,B_y,C_y,D_y,row)*feet2meter # in meters
+	x = (col-width/2.)/fourPL(A_x,B_x,C_x,D_x,row)*inch2meter
+	#x = 1./(M_x*row + B_x)*(col-width/2.0)*inch2meter
 	return (x,y)
 
 def fourPL(A,B,C,D,x):
@@ -46,7 +58,7 @@ def fourPL(A,B,C,D,x):
 
 def find_green(image):
 	height,width = image.shape[:2]
-	roi = image[height/2:,:]
+	roi = image[HORIZON:,:]
 	hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
 
 	mask = cv2.inRange(hsv_img, HSV_lower_thresh, HSV_upper_thresh)
@@ -62,14 +74,14 @@ def find_green(image):
 		M = cv2.moments(c)
 		px,py,area = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]), M["m00"])
 		if area >= MIN_AREA_THRESH:
-			x,y = pixel2world(py,px,width)
+			x,y = pixel2world(py+HORIZON,px,width)
 			centroids.append([y,-1*x,0.0])
-			pixels.append([px,py+height/2,0.0])
+			pixels.append([px,py+HORIZON/2,0.0])
 			if y < closest_y:
 				closest_y = y
 				closest_centroid = [y,-1*x,0.0]
 	if DEBUG:
-		debug_info(mask ,roi, hsv_img, pixels, vis=False)
+		debug_info(mask ,roi, hsv_img, pixels, vis=DEBUG_VIS)
 	return Point(*closest_centroid), centroids
 
 
