@@ -5,10 +5,10 @@ greenCam:
   min_area_thresh: 200.0
   lower_thresh: [60,60,6]
   upper_thresh: [80,255,255]
+  debug: True
 
 goal_manager:
   green_gp_topic: "/waypoint_markers"
-
 
 space_explorer: 
   enabled: True
