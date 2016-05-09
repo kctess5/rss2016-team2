@@ -1,0 +1,369 @@
+records:
+- err: 1260.0694930108598
+  params: {contiguous_min: 103.0, distance_threshold: 6.799999999999999, gaussian_width: 0.49000000000000005,
+    goal_angle_max: 1.4000000000000004, laser_max: 5.0, median_width: 0.17500000000000002,
+    use_prefiltering: 0.0}
+- err: 1270.043952019395
+  params: {contiguous_min: 13.0, distance_threshold: 7.599999999999999, gaussian_width: 0.385,
+    goal_angle_max: 1.6000000000000005, laser_max: 5.0, median_width: 0.14, use_prefiltering: 0.0}
+- err: 1174.9890358892771
+  params: {contiguous_min: 49.0, distance_threshold: 6.799999999999999, gaussian_width: 0.0,
+    goal_angle_max: 1.3000000000000003, laser_max: 6.5, median_width: 0.24500000000000002,
+    use_prefiltering: 0.0}
+- err: 820.7562539212915
+  params: {contiguous_min: 133.0, distance_threshold: 4.799999999999999, gaussian_width: 0.42000000000000004,
+    goal_angle_max: 1.6000000000000005, laser_max: 6.5, median_width: 0.35000000000000003,
+    use_prefiltering: 1.0}
+- err: 494.21254363799756
+  params: {contiguous_min: 7.0, distance_threshold: 5.6, gaussian_width: 0.07, goal_angle_max: 1.1,
+    laser_max: 8.0, median_width: 0.17500000000000002, use_prefiltering: 1.0}
+- err: 362.2765527721285
+  params: {contiguous_min: 91.0, distance_threshold: 6.399999999999999, gaussian_width: 0.31500000000000006,
+    goal_angle_max: 1.1, laser_max: 11.0, median_width: 0.10500000000000001, use_prefiltering: 0.0}
+- err: 494.1012397545706
+  params: {contiguous_min: 1.0, distance_threshold: 5.6, gaussian_width: 0.28, goal_angle_max: 1.2000000000000002,
+    laser_max: 8.0, median_width: 0.035, use_prefiltering: 1.0}
+- err: 45.33468939100781
+  params: {contiguous_min: 115.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.17500000000000002,
+    goal_angle_max: 1.2000000000000002, laser_max: 9.5, median_width: 0.14, use_prefiltering: 0.0}
+- err: 57.65825024396659
+  params: {contiguous_min: 37.0, distance_threshold: 2.0, gaussian_width: 0.0, goal_angle_max: 1.5000000000000004,
+    laser_max: 11.0, median_width: 0.17500000000000002, use_prefiltering: 1.0}
+- err: 55.0890276353793
+  params: {contiguous_min: 109.0, distance_threshold: 3.9999999999999996, gaussian_width: 0.385,
+    goal_angle_max: 1.4000000000000004, laser_max: 8.0, median_width: 0.0, use_prefiltering: 0.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 97.0, distance_threshold: 2.4, gaussian_width: 0.14, goal_angle_max: 1.1,
+    laser_max: 5.0, median_width: 0.35000000000000003, use_prefiltering: 0.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 121.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.24500000000000002,
+    goal_angle_max: 1.4000000000000004, laser_max: 5.0, median_width: 0.10500000000000001,
+    use_prefiltering: 0.0}
+- err: 30.849139477664522
+  params: {contiguous_min: 139.0, distance_threshold: 3.9999999999999996, gaussian_width: 0.0,
+    goal_angle_max: 1.5000000000000004, laser_max: 6.5, median_width: 0.21000000000000002,
+    use_prefiltering: 0.0}
+- err: 43.1181252320138
+  params: {contiguous_min: 121.0, distance_threshold: 2.8, gaussian_width: 0.0, goal_angle_max: 1.4000000000000004,
+    laser_max: 11.0, median_width: 0.035, use_prefiltering: 1.0}
+- err: 40.21684555550666
+  params: {contiguous_min: 73.0, distance_threshold: 2.0, gaussian_width: 0.10500000000000001,
+    goal_angle_max: 1.5000000000000004, laser_max: 6.5, median_width: 0.28, use_prefiltering: 1.0}
+- err: 46.674159956753606
+  params: {contiguous_min: 115.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.385,
+    goal_angle_max: 1.3000000000000003, laser_max: 11.0, median_width: 0.10500000000000001,
+    use_prefiltering: 0.0}
+- err: 45.38451497839127
+  params: {contiguous_min: 139.0, distance_threshold: 2.0, gaussian_width: 0.28, goal_angle_max: 1.5000000000000004,
+    laser_max: 5.0, median_width: 0.31500000000000006, use_prefiltering: 1.0}
+- err: 49.27291028392822
+  params: {contiguous_min: 1.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.45500000000000007,
+    goal_angle_max: 1.4000000000000004, laser_max: 9.5, median_width: 0.385, use_prefiltering: 1.0}
+- err: 45.77519744061523
+  params: {contiguous_min: 7.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.31500000000000006,
+    goal_angle_max: 1.2000000000000002, laser_max: 8.0, median_width: 0.14, use_prefiltering: 0.0}
+- err: 46.674159956753606
+  params: {contiguous_min: 115.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.10500000000000001,
+    goal_angle_max: 1.4000000000000004, laser_max: 11.0, median_width: 0.14, use_prefiltering: 0.0}
+- err: 43.14548361003706
+  params: {contiguous_min: 25.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.24500000000000002,
+    goal_angle_max: 1.1, laser_max: 5.0, median_width: 0.31500000000000006, use_prefiltering: 1.0}
+- err: 37.390964975446835
+  params: {contiguous_min: 67.0, distance_threshold: 2.0, gaussian_width: 0.35000000000000003,
+    goal_angle_max: 1.4000000000000004, laser_max: 8.0, median_width: 0.17500000000000002,
+    use_prefiltering: 1.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 145.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.035,
+    goal_angle_max: 1.5000000000000004, laser_max: 5.0, median_width: 0.21000000000000002,
+    use_prefiltering: 0.0}
+- err: 45.77519744061523
+  params: {contiguous_min: 127.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.07,
+    goal_angle_max: 1.3000000000000003, laser_max: 8.0, median_width: 0.35000000000000003,
+    use_prefiltering: 0.0}
+- err: 50.14797239631926
+  params: {contiguous_min: 121.0, distance_threshold: 5.199999999999999, gaussian_width: 0.0,
+    goal_angle_max: 1.6000000000000005, laser_max: 6.5, median_width: 0.0, use_prefiltering: 0.0}
+- err: 33.16197002594755
+  params: {contiguous_min: 25.0, distance_threshold: 2.4, gaussian_width: 0.21000000000000002,
+    goal_angle_max: 1.5000000000000004, laser_max: 9.5, median_width: 0.28, use_prefiltering: 1.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 43.0, distance_threshold: 2.0, gaussian_width: 0.17500000000000002,
+    goal_angle_max: 1.1, laser_max: 5.0, median_width: 0.28, use_prefiltering: 0.0}
+- err: 46.04241483413789
+  params: {contiguous_min: 109.0, distance_threshold: 2.0, gaussian_width: 0.49000000000000005,
+    goal_angle_max: 1.4000000000000004, laser_max: 11.0, median_width: 0.35000000000000003,
+    use_prefiltering: 1.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 19.0, distance_threshold: 2.8, gaussian_width: 0.07, goal_angle_max: 1.3000000000000003,
+    laser_max: 5.0, median_width: 0.10500000000000001, use_prefiltering: 0.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 79.0, distance_threshold: 2.4, gaussian_width: 0.21000000000000002,
+    goal_angle_max: 1.5000000000000004, laser_max: 5.0, median_width: 0.28, use_prefiltering: 0.0}
+- err: 45.77519744061523
+  params: {contiguous_min: 31.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.42000000000000004,
+    goal_angle_max: 1.1, laser_max: 8.0, median_width: 0.17500000000000002, use_prefiltering: 0.0}
+- err: 34.235466729005175
+  params: {contiguous_min: 1.0, distance_threshold: 2.8, gaussian_width: 0.21000000000000002,
+    goal_angle_max: 1.1, laser_max: 5.0, median_width: 0.17500000000000002, use_prefiltering: 1.0}
+- err: 30.609616153946384
+  params: {contiguous_min: 13.0, distance_threshold: 2.4, gaussian_width: 0.24500000000000002,
+    goal_angle_max: 1.2000000000000002, laser_max: 11.0, median_width: 0.07, use_prefiltering: 1.0}
+- err: 44.49110698149718
+  params: {contiguous_min: 37.0, distance_threshold: 2.8, gaussian_width: 0.21000000000000002,
+    goal_angle_max: 1.2000000000000002, laser_max: 9.5, median_width: 0.31500000000000006,
+    use_prefiltering: 1.0}
+- err: 47.23365079581263
+  params: {contiguous_min: 7.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.14,
+    goal_angle_max: 1.5000000000000004, laser_max: 5.0, median_width: 0.0, use_prefiltering: 1.0}
+- err: 38.17797641065894
+  params: {contiguous_min: 13.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.21000000000000002,
+    goal_angle_max: 1.5000000000000004, laser_max: 11.0, median_width: 0.0, use_prefiltering: 1.0}
+- err: 49.162840398687464
+  params: {contiguous_min: 1.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.42000000000000004,
+    goal_angle_max: 1.1, laser_max: 11.0, median_width: 0.07, use_prefiltering: 1.0}
+- err: 38.67920852725808
+  params: {contiguous_min: 61.0, distance_threshold: 2.0, gaussian_width: 0.24500000000000002,
+    goal_angle_max: 1.4000000000000004, laser_max: 9.5, median_width: 0.21000000000000002,
+    use_prefiltering: 1.0}
+- err: 37.77054805208712
+  params: {contiguous_min: 43.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.14,
+    goal_angle_max: 1.4000000000000004, laser_max: 5.0, median_width: 0.0, use_prefiltering: 0.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 91.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.28,
+    goal_angle_max: 1.1, laser_max: 5.0, median_width: 0.31500000000000006, use_prefiltering: 0.0}
+- err: 34.235466729005175
+  params: {contiguous_min: 1.0, distance_threshold: 2.0, gaussian_width: 0.07, goal_angle_max: 1.6000000000000005,
+    laser_max: 5.0, median_width: 0.24500000000000002, use_prefiltering: 1.0}
+- err: 34.13873384340311
+  params: {contiguous_min: 13.0, distance_threshold: 2.0, gaussian_width: 0.42000000000000004,
+    goal_angle_max: 1.5000000000000004, laser_max: 5.0, median_width: 0.14, use_prefiltering: 1.0}
+- err: 30.068727797588934
+  params: {contiguous_min: 73.0, distance_threshold: 3.9999999999999996, gaussian_width: 0.0,
+    goal_angle_max: 1.3000000000000003, laser_max: 11.0, median_width: 0.07, use_prefiltering: 0.0}
+- err: 38.43453662912607
+  params: {contiguous_min: 73.0, distance_threshold: 2.8, gaussian_width: 0.42000000000000004,
+    goal_angle_max: 1.4000000000000004, laser_max: 6.5, median_width: 0.0, use_prefiltering: 1.0}
+- err: 30.336251177569434
+  params: {contiguous_min: 7.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.28,
+    goal_angle_max: 1.4000000000000004, laser_max: 11.0, median_width: 0.35000000000000003,
+    use_prefiltering: 1.0}
+- err: 40.65557175244345
+  params: {contiguous_min: 43.0, distance_threshold: 2.4, gaussian_width: 0.35000000000000003,
+    goal_angle_max: 1.4000000000000004, laser_max: 6.5, median_width: 0.21000000000000002,
+    use_prefiltering: 1.0}
+- err: 47.15273310774703
+  params: {contiguous_min: 121.0, distance_threshold: 2.0, gaussian_width: 0.49000000000000005,
+    goal_angle_max: 1.1, laser_max: 11.0, median_width: 0.0, use_prefiltering: 1.0}
+- err: 30.759906676110432
+  params: {contiguous_min: 13.0, distance_threshold: 2.0, gaussian_width: 0.14, goal_angle_max: 1.3000000000000003,
+    laser_max: 9.5, median_width: 0.24500000000000002, use_prefiltering: 1.0}
+- err: 39.69238652433716
+  params: {contiguous_min: 61.0, distance_threshold: 2.4, gaussian_width: 0.0, goal_angle_max: 1.5000000000000004,
+    laser_max: 8.0, median_width: 0.17500000000000002, use_prefiltering: 1.0}
+- err: 43.01925043003355
+  params: {contiguous_min: 31.0, distance_threshold: 2.4, gaussian_width: 0.17500000000000002,
+    goal_angle_max: 1.2000000000000002, laser_max: 11.0, median_width: 0.28, use_prefiltering: 1.0}
+- err: 46.674159956753606
+  params: {contiguous_min: 31.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.42000000000000004,
+    goal_angle_max: 1.5000000000000004, laser_max: 11.0, median_width: 0.21000000000000002,
+    use_prefiltering: 0.0}
+- err: 47.742070132547504
+  params: {contiguous_min: 145.0, distance_threshold: 2.0, gaussian_width: 0.42000000000000004,
+    goal_angle_max: 1.2000000000000002, laser_max: 11.0, median_width: 0.385, use_prefiltering: 1.0}
+- err: 33.753073607848755
+  params: {contiguous_min: 19.0, distance_threshold: 2.4, gaussian_width: 0.49000000000000005,
+    goal_angle_max: 1.3000000000000003, laser_max: 5.0, median_width: 0.35000000000000003,
+    use_prefiltering: 1.0}
+- err: 34.13873384340311
+  params: {contiguous_min: 13.0, distance_threshold: 2.4, gaussian_width: 0.35000000000000003,
+    goal_angle_max: 1.4000000000000004, laser_max: 5.0, median_width: 0.21000000000000002,
+    use_prefiltering: 1.0}
+- err: 30.200010067202637
+  params: {contiguous_min: 1.0, distance_threshold: 3.9999999999999996, gaussian_width: 0.0,
+    goal_angle_max: 1.5000000000000004, laser_max: 6.5, median_width: 0.07, use_prefiltering: 1.0}
+- err: 42.870070379681984
+  params: {contiguous_min: 25.0, distance_threshold: 2.8, gaussian_width: 0.07, goal_angle_max: 1.5000000000000004,
+    laser_max: 9.5, median_width: 0.17500000000000002, use_prefiltering: 1.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 37.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.28,
+    goal_angle_max: 1.2000000000000002, laser_max: 5.0, median_width: 0.31500000000000006,
+    use_prefiltering: 0.0}
+- err: 42.85653142852839
+  params: {contiguous_min: 31.0, distance_threshold: 2.4, gaussian_width: 0.07, goal_angle_max: 1.5000000000000004,
+    laser_max: 9.5, median_width: 0.28, use_prefiltering: 1.0}
+- err: 30.609616153946384
+  params: {contiguous_min: 13.0, distance_threshold: 2.4, gaussian_width: 0.42000000000000004,
+    goal_angle_max: 1.2000000000000002, laser_max: 11.0, median_width: 0.17500000000000002,
+    use_prefiltering: 1.0}
+- err: 45.01313625851765
+  params: {contiguous_min: 97.0, distance_threshold: 2.0, gaussian_width: 0.385, goal_angle_max: 1.3000000000000003,
+    laser_max: 11.0, median_width: 0.10500000000000001, use_prefiltering: 1.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 7.0, distance_threshold: 2.4, gaussian_width: 0.28, goal_angle_max: 1.3000000000000003,
+    laser_max: 5.0, median_width: 0.385, use_prefiltering: 0.0}
+- err: 44.49110698149718
+  params: {contiguous_min: 37.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.45500000000000007,
+    goal_angle_max: 1.3000000000000003, laser_max: 9.5, median_width: 0.385, use_prefiltering: 1.0}
+- err: 46.674159956753606
+  params: {contiguous_min: 139.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.49000000000000005,
+    goal_angle_max: 1.5000000000000004, laser_max: 11.0, median_width: 0.10500000000000001,
+    use_prefiltering: 0.0}
+- err: 45.77519744061523
+  params: {contiguous_min: 25.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.28,
+    goal_angle_max: 1.1, laser_max: 8.0, median_width: 0.035, use_prefiltering: 0.0}
+- err: 44.795526518715555
+  params: {contiguous_min: 55.0, distance_threshold: 2.4, gaussian_width: 0.0, goal_angle_max: 1.5000000000000004,
+    laser_max: 11.0, median_width: 0.10500000000000001, use_prefiltering: 0.0}
+- err: 45.33468939100781
+  params: {contiguous_min: 61.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.17500000000000002,
+    goal_angle_max: 1.4000000000000004, laser_max: 9.5, median_width: 0.035, use_prefiltering: 0.0}
+- err: 47.04667974810479
+  params: {contiguous_min: 49.0, distance_threshold: 4.3999999999999995, gaussian_width: 0.0,
+    goal_angle_max: 1.1, laser_max: 11.0, median_width: 0.385, use_prefiltering: 0.0}
+- err: 46.674159956753606
+  params: {contiguous_min: 121.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.07,
+    goal_angle_max: 1.4000000000000004, laser_max: 11.0, median_width: 0.31500000000000006,
+    use_prefiltering: 0.0}
+- err: 45.77519744061523
+  params: {contiguous_min: 145.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.31500000000000006,
+    goal_angle_max: 1.3000000000000003, laser_max: 8.0, median_width: 0.17500000000000002,
+    use_prefiltering: 0.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 67.0, distance_threshold: 2.8, gaussian_width: 0.35000000000000003,
+    goal_angle_max: 1.4000000000000004, laser_max: 5.0, median_width: 0.385, use_prefiltering: 0.0}
+- err: 33.9446659656027
+  params: {contiguous_min: 73.0, distance_threshold: 2.8, gaussian_width: 0.0, goal_angle_max: 1.4000000000000004,
+    laser_max: 8.0, median_width: 0.07, use_prefiltering: 0.0}
+- err: 39.944223022777514
+  params: {contiguous_min: 91.0, distance_threshold: 2.0, gaussian_width: 0.14, goal_angle_max: 1.3000000000000003,
+    laser_max: 5.0, median_width: 0.14, use_prefiltering: 1.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 25.0, distance_threshold: 2.8, gaussian_width: 0.35000000000000003,
+    goal_angle_max: 1.4000000000000004, laser_max: 5.0, median_width: 0.35000000000000003,
+    use_prefiltering: 0.0}
+- err: 47.742070132547504
+  params: {contiguous_min: 145.0, distance_threshold: 2.0, gaussian_width: 0.10500000000000001,
+    goal_angle_max: 1.1, laser_max: 11.0, median_width: 0.07, use_prefiltering: 1.0}
+- err: 39.00455829567287
+  params: {contiguous_min: 25.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.07,
+    goal_angle_max: 1.4000000000000004, laser_max: 11.0, median_width: 0.0, use_prefiltering: 1.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 67.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.21000000000000002,
+    goal_angle_max: 1.4000000000000004, laser_max: 5.0, median_width: 0.24500000000000002,
+    use_prefiltering: 0.0}
+- err: 30.087987525276098
+  params: {contiguous_min: 115.0, distance_threshold: 3.9999999999999996, gaussian_width: 0.0,
+    goal_angle_max: 1.6000000000000005, laser_max: 11.0, median_width: 0.31500000000000006,
+    use_prefiltering: 0.0}
+- err: 43.60665050396619
+  params: {contiguous_min: 49.0, distance_threshold: 2.0, gaussian_width: 0.24500000000000002,
+    goal_angle_max: 1.1, laser_max: 9.5, median_width: 0.14, use_prefiltering: 1.0}
+- err: 33.98558637261645
+  params: {contiguous_min: 43.0, distance_threshold: 2.0, gaussian_width: 0.28, goal_angle_max: 1.4000000000000004,
+    laser_max: 5.0, median_width: 0.24500000000000002, use_prefiltering: 1.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 55.0, distance_threshold: 2.8, gaussian_width: 0.28, goal_angle_max: 1.3000000000000003,
+    laser_max: 5.0, median_width: 0.10500000000000001, use_prefiltering: 0.0}
+- err: 44.87593088983322
+  params: {contiguous_min: 19.0, distance_threshold: 2.4, gaussian_width: 0.0, goal_angle_max: 1.5000000000000004,
+    laser_max: 8.0, median_width: 0.21000000000000002, use_prefiltering: 0.0}
+- err: 47.757562712690294
+  params: {contiguous_min: 43.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.31500000000000006,
+    goal_angle_max: 1.3000000000000003, laser_max: 6.5, median_width: 0.28, use_prefiltering: 0.0}
+- err: 30.16012009487967
+  params: {contiguous_min: 61.0, distance_threshold: 3.9999999999999996, gaussian_width: 0.0,
+    goal_angle_max: 1.3000000000000003, laser_max: 8.0, median_width: 0.31500000000000006,
+    use_prefiltering: 0.0}
+- err: 44.91579295292607
+  params: {contiguous_min: 103.0, distance_threshold: 2.0, gaussian_width: 0.385,
+    goal_angle_max: 1.3000000000000003, laser_max: 9.5, median_width: 0.28, use_prefiltering: 1.0}
+- err: 43.964955459243185
+  params: {contiguous_min: 37.0, distance_threshold: 2.4, gaussian_width: 0.385, goal_angle_max: 1.3000000000000003,
+    laser_max: 8.0, median_width: 0.31500000000000006, use_prefiltering: 1.0}
+- err: 45.96925492310738
+  params: {contiguous_min: 145.0, distance_threshold: 2.0, gaussian_width: 0.31500000000000006,
+    goal_angle_max: 1.6000000000000005, laser_max: 11.0, median_width: 0.0, use_prefiltering: 1.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 43.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.31500000000000006,
+    goal_angle_max: 1.3000000000000003, laser_max: 5.0, median_width: 0.035, use_prefiltering: 0.0}
+- err: 42.63918750174663
+  params: {contiguous_min: 31.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.45500000000000007,
+    goal_angle_max: 1.4000000000000004, laser_max: 8.0, median_width: 0.385, use_prefiltering: 1.0}
+- err: 31.267976372867082
+  params: {contiguous_min: 127.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.0,
+    goal_angle_max: 1.2000000000000002, laser_max: 5.0, median_width: 0.28, use_prefiltering: 0.0}
+- err: 41.52990704514603
+  params: {contiguous_min: 85.0, distance_threshold: 2.0, gaussian_width: 0.35000000000000003,
+    goal_angle_max: 1.1, laser_max: 6.5, median_width: 0.10500000000000001, use_prefiltering: 1.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 121.0, distance_threshold: 2.8, gaussian_width: 0.24500000000000002,
+    goal_angle_max: 1.6000000000000005, laser_max: 5.0, median_width: 0.21000000000000002,
+    use_prefiltering: 0.0}
+- err: 46.22926069266984
+  params: {contiguous_min: 133.0, distance_threshold: 2.0, gaussian_width: 0.385,
+    goal_angle_max: 1.1, laser_max: 6.5, median_width: 0.07, use_prefiltering: 1.0}
+- err: 42.63918750174663
+  params: {contiguous_min: 31.0, distance_threshold: 2.4, gaussian_width: 0.17500000000000002,
+    goal_angle_max: 1.4000000000000004, laser_max: 8.0, median_width: 0.24500000000000002,
+    use_prefiltering: 1.0}
+- err: 48.07124735681535
+  params: {contiguous_min: 127.0, distance_threshold: 4.3999999999999995, gaussian_width: 0.0,
+    goal_angle_max: 1.3000000000000003, laser_max: 6.5, median_width: 0.21000000000000002,
+    use_prefiltering: 0.0}
+- err: 47.22119228765435
+  params: {contiguous_min: 145.0, distance_threshold: 4.3999999999999995, gaussian_width: 0.0,
+    goal_angle_max: 1.6000000000000005, laser_max: 11.0, median_width: 0.385, use_prefiltering: 0.0}
+- err: 45.77519744061523
+  params: {contiguous_min: 73.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.49000000000000005,
+    goal_angle_max: 1.6000000000000005, laser_max: 8.0, median_width: 0.385, use_prefiltering: 0.0}
+- err: 45.38451497839127
+  params: {contiguous_min: 139.0, distance_threshold: 2.0, gaussian_width: 0.07, goal_angle_max: 1.4000000000000004,
+    laser_max: 5.0, median_width: 0.07, use_prefiltering: 1.0}
+- err: 34.18516825959856
+  params: {contiguous_min: 31.0, distance_threshold: 2.0, gaussian_width: 0.14, goal_angle_max: 1.4000000000000004,
+    laser_max: 5.0, median_width: 0.21000000000000002, use_prefiltering: 1.0}
+- err: 38.61056103788121
+  params: {contiguous_min: 31.0, distance_threshold: 2.8, gaussian_width: 0.0, goal_angle_max: 1.2000000000000002,
+    laser_max: 11.0, median_width: 0.14, use_prefiltering: 1.0}
+- err: 37.77054805208712
+  params: {contiguous_min: 25.0, distance_threshold: 3.1999999999999997, gaussian_width: 0.49000000000000005,
+    goal_angle_max: 1.4000000000000004, laser_max: 5.0, median_width: 0.0, use_prefiltering: 0.0}
+- err: 45.77519744061523
+  params: {contiguous_min: 103.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.31500000000000006,
+    goal_angle_max: 1.3000000000000003, laser_max: 8.0, median_width: 0.07, use_prefiltering: 0.0}
+- err: 33.77008630430572
+  params: {contiguous_min: 115.0, distance_threshold: 2.8, gaussian_width: 0.035,
+    goal_angle_max: 1.5000000000000004, laser_max: 5.0, median_width: 0.31500000000000006,
+    use_prefiltering: 0.0}
+- err: 47.521196008474526
+  params: {contiguous_min: 139.0, distance_threshold: 2.0, gaussian_width: 0.035,
+    goal_angle_max: 1.1, laser_max: 8.0, median_width: 0.14, use_prefiltering: 1.0}
+- err: 102.91696161149926
+  params: {contiguous_min: 127.0, distance_threshold: 3.5999999999999996, gaussian_width: 0.31500000000000006,
+    goal_angle_max: 1.6000000000000005, laser_max: 5.0, median_width: 0.0, use_prefiltering: 1.0}
+- err: 32.25320371184098
+  params: {contiguous_min: 103.0, distance_threshold: 2.4, gaussian_width: 0.24500000000000002,
+    goal_angle_max: 1.2000000000000002, laser_max: 6.5, median_width: 0.035, use_prefiltering: 1.0}
+- err: 30.303063169255115
+  params: {contiguous_min: 1.0, distance_threshold: 3.9999999999999996, gaussian_width: 0.28,
+    goal_angle_max: 1.5000000000000004, laser_max: 6.5, median_width: 0.10500000000000001,
+    use_prefiltering: 0.0}
+- err: 30.403018141464976
+  params: {contiguous_min: 13.0, distance_threshold: 2.0, gaussian_width: 0.21000000000000002,
+    goal_angle_max: 1.2000000000000002, laser_max: 6.5, median_width: 0.10500000000000001,
+    use_prefiltering: 1.0}
+- err: 30.136766275984805
+  params: {contiguous_min: 85.0, distance_threshold: 2.4, gaussian_width: 0.14, goal_angle_max: 1.2000000000000002,
+    laser_max: 11.0, median_width: 0.28, use_prefiltering: 1.0}
+- err: 30.184867444883068
+  params: {contiguous_min: 121.0, distance_threshold: 3.9999999999999996, gaussian_width: 0.24500000000000002,
+    goal_angle_max: 1.1, laser_max: 11.0, median_width: 0.28, use_prefiltering: 0.0}
+- err: 30.05014618190643
+  params: {contiguous_min: 61.0, distance_threshold: 2.8, gaussian_width: 0.14, goal_angle_max: 1.6000000000000005,
+    laser_max: 6.5, median_width: 0.385, use_prefiltering: 0.0}
+- err: 30.05014618190643
+  params: {contiguous_min: 13.0, distance_threshold: 2.8, gaussian_width: 0.07, goal_angle_max: 1.6000000000000005,
+    laser_max: 6.5, median_width: 0.14, use_prefiltering: 0.0}
+- err: 30.05014618190643
+  params: {contiguous_min: 19.0, distance_threshold: 2.4, gaussian_width: 0.385, goal_angle_max: 1.6000000000000005,
+    laser_max: 6.5, median_width: 0.0, use_prefiltering: 0.0}
