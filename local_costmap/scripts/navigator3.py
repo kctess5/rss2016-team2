@@ -72,6 +72,9 @@ class ScanMaximaNavigator(object):
 		self.goal_point = None
 		self.opt_params = None
 
+		self.goal_buffer = np.zeros([int(param("navigator.smooth_samples")), 3])
+		self.goal_index = 0
+
 		self.lock = threading.Lock()
 
 		if self.get_nav_param("show_local_viz") and not self.opt_mode:
@@ -86,6 +89,12 @@ class ScanMaximaNavigator(object):
 			return self.opt_params[key]
 		else:
 			return param("navigator." + key)
+
+	def new_goal_point(self):
+		self.angle_buffer
+
+	def smoothed_goalpoint(self):
+		pass
 
 	def scan_callback(self, laser):
 		# filter the laser data to only include a subset of useful data
@@ -154,6 +163,32 @@ class ScanMaximaNavigator(object):
 	def goalpoint(self):
 		return self.goal_point
 
+	def set_goal_point(self, gp):
+		if gp == None:
+			self.goal_buffer[self.goal_index % param("navigator.smooth_samples"), 0] = np.inf
+			self.goal_buffer[self.goal_index % param("navigator.smooth_samples"), 1] = np.inf
+			self.goal_buffer[self.goal_index % param("navigator.smooth_samples"), 2] = np.inf
+		else:
+			self.goal_buffer[self.goal_index % param("navigator.smooth_samples"), :] = gp
+		self.goal_index += 1
+
+		if self.goal_index < param("navigator.smooth_samples"):
+			self.goal_point = gp
+		else:
+			dists = np.linalg.norm(self.goal_buffer[:,0:2], axis=1)
+			angles = self.goal_buffer[:,2]
+
+			median_distance = np.median(dists)
+			median_angle = np.median(angles)
+
+			if np.isinf(median_angle) or np.isinf(median_distance):
+				print("NONONONONe")
+				self.goal_point == None
+				return
+
+			pt = polar_to_euclid(median_angle, median_distance)
+			self.goal_point = [pt[0], pt[1], median_angle]
+
 	def find_corridor(self, filtered_ranges, angles):
 		# given prefiltered scanner data, find corridors by finding local maxima
 		peaks = signal.argrelextrema(filtered_ranges, np.greater_equal)[0]
@@ -169,7 +204,8 @@ class ScanMaximaNavigator(object):
 		if candidate_peaks.shape[0] == 0:
 			if not self.opt_mode:
 				print("Failed to find corridors")
-			self.goal_point = None
+			self.set_goal_point(None)
+			# self.goal_point = None
 			return None
 
 		if self.get_nav_param("turn_right"):
@@ -177,9 +213,9 @@ class ScanMaximaNavigator(object):
 		else:
 			picked_peak = candidate_peaks[-1]
 
-		point = polar_to_euclid(angles[picked_peak], filtered_ranges[picked_peak] - 0.5)
+		point = polar_to_euclid(angles[picked_peak], filtered_ranges[picked_peak] - 1.5)
 		
-		self.goal_point = (point[0], point[1], angles[picked_peak])
+		self.set_goal_point(np.array([float(point[0]), float(point[1]), float(angles[picked_peak])]))
 
 		if self.local_viz:
 			with self.lock:
@@ -191,7 +227,7 @@ class ScanMaximaNavigator(object):
 
 	def visualize(self):
 		with self.lock:
-			if self.viz.should_visualize("goals.corridor_goal") and self.goal_point:
+			if self.viz.should_visualize("goals.corridor_goal") and not self.goal_point == None:
 					self.viz.publish_corridor_goal(self.goal_point)
 
 			if self.local_viz and not self.angles == None:

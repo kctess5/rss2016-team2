@@ -683,6 +683,11 @@ class SpaceExploration(HeuristicSearch):
         return Circle(x=g.x, y=g.y, radius=r, deflection=0)
 
     def goal_met(self, state, goal_state):
+        if euclidean_distance(goal_state, Point(x=0,y=0)) > 4:
+            if euclidean_distance(state, goal_state) < 2:
+                # print("test")
+                return True
+            
         return self.overlap(state, goal_state, float(param("path_search.overlap_percentage_goal")))
 
     def is_admissible(self, state):
@@ -826,13 +831,13 @@ class ChallengeController(DirectControlModule):
                 control_time = rospy.get_rostime().to_sec()
 
                 if self.control_monitor.index % 10 == 1:
-                    print()
-                    print ("average planning fps: ", self.control_monitor.fps())
+                    # print()
+                    # print ("average planning fps: ", self.control_monitor.fps())
                     self.optimize_time_limit()
-                    print("last cycle time: total:", round(control_time - start_time,5), 's')
-                    print("   - obstacles :", round(obstacle_time - start_time,5), 's')
-                    print("   - goals     :", round(goal_time-obstacle_time,5), 's')
-                    print("   - control   :", round(control_time-goal_time,5), 's')
+                    # print("last cycle time: total:", round(control_time - start_time,5), 's')
+                    # print("   - obstacles :", round(obstacle_time - start_time,5), 's')
+                    # print("   - goals     :", round(goal_time-obstacle_time,5), 's')
+                    # print("   - control   :", round(control_time-goal_time,5), 's')
 
 
                 # house keeping

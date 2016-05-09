@@ -50,11 +50,11 @@ navigator:
   downsample: 2
   # widths are in percentages compared to size of data
   # gaussian_width: 0.15
-  gaussian_width: 0.15
+  gaussian_width: 0.25
   # median_width: 0.17
-  median_width: 0.1
+  median_width: 0.12
   # minimum distance to consider a maxima a corridor
-  distance_threshold: 4.2
+  distance_threshold: 3.7
   # min/max angles to be considered
   goal_angle_max: 1.5
   # turns right if true, left otherwise
@@ -62,11 +62,13 @@ navigator:
   # removes this percentages of scans
   trim_percentage: 0.1
   show_local_viz: False
-  laser_max: 8.0
+  laser_max: 6.0
   error_range: 60
   contiguous_min: 47
   use_prefiltering: True
   turn_right: True
+  # accumulates this many samples for 
+  smooth_samples: 5
 
 
 
